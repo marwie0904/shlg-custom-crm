@@ -5,11 +5,18 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Send, MessageCircle, Instagram, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+
+function getInitials(firstName?: string, lastName?: string) {
+  const first = firstName?.charAt(0) || "";
+  const last = lastName?.charAt(0) || "";
+  return (first + last).toUpperCase() || "?";
+}
 
 interface ContactMessagesProps {
   contactId: Id<"contacts">;
@@ -209,13 +216,24 @@ export function ContactMessages({ contactId, className }: ContactMessagesProps) 
                   )}
                   <div
                     className={cn(
-                      "flex",
+                      "flex items-end gap-2",
                       msg.isOutgoing ? "justify-end" : "justify-start"
                     )}
                   >
+                    {/* Avatar for incoming messages */}
+                    {!msg.isOutgoing && (
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
+                          {getInitials(
+                            conversationWithMessages?.contact?.firstName,
+                            conversationWithMessages?.contact?.lastName
+                          )}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
                     <div
                       className={cn(
-                        "max-w-[80%] rounded-2xl px-4 py-2",
+                        "max-w-[75%] rounded-2xl px-4 py-2",
                         msg.isOutgoing
                           ? "bg-primary text-white"
                           : "bg-gray-100 text-gray-900"

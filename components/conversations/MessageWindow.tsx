@@ -200,10 +200,18 @@ export function MessageWindow({
                   )}
                   <div
                     className={cn(
-                      "flex",
+                      "flex items-end gap-2",
                       msg.isOutgoing ? "justify-end" : "justify-start"
                     )}
                   >
+                    {/* Avatar for incoming messages */}
+                    {!msg.isOutgoing && (
+                      <Avatar className="size-8 shrink-0">
+                        <AvatarFallback className="bg-gray-200 text-gray-600 text-xs font-medium">
+                          {getInitials(contact.firstName, contact.lastName)}
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
                     <div
                       className={cn(
                         "max-w-[70%] rounded-2xl px-4 py-2",
