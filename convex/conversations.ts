@@ -25,11 +25,18 @@ export const list = query({
       conversations = await ctx.db.query("conversations").order("desc").take(limit);
     }
 
-    // Fetch contacts for each conversation
+    // Fetch contacts and last message for each conversation
     const conversationsWithContacts = await Promise.all(
       conversations.map(async (conv) => {
-        const contact = await ctx.db.get(conv.contactId);
-        return { ...conv, contact };
+        const [contact, lastMessage] = await Promise.all([
+          ctx.db.get(conv.contactId),
+          ctx.db
+            .query("messages")
+            .withIndex("by_conversationId", (q) => q.eq("conversationId", conv._id))
+            .order("desc")
+            .first(),
+        ]);
+        return { ...conv, contact, lastMessage };
       })
     );
 

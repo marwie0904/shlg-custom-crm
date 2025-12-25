@@ -19,6 +19,13 @@ interface ConvexContact {
   source?: string;
 }
 
+interface ConvexMessage {
+  _id: Id<"messages">;
+  content: string;
+  isOutgoing: boolean;
+  timestamp: number;
+}
+
 interface ConvexConversation {
   _id: Id<"conversations">;
   contactId: Id<"contacts">;
@@ -26,6 +33,7 @@ interface ConvexConversation {
   unreadCount: number;
   lastMessageAt: number;
   contact?: ConvexContact | null;
+  lastMessage?: ConvexMessage | null;
 }
 
 interface ConversationListProps {
@@ -142,10 +150,19 @@ export function ConversationList({
                     </span>
                   </div>
                   <div className="mt-1 flex items-start justify-between gap-2">
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {conversation.source === "messenger" ? "Facebook Messenger" :
-                       conversation.source === "instagram" ? "Instagram DM" :
-                       conversation.source}
+                    <p className="text-sm text-gray-600 line-clamp-1">
+                      {conversation.lastMessage ? (
+                        <>
+                          <span className="font-medium">
+                            {conversation.lastMessage.isOutgoing ? "You" : contact.firstName}:
+                          </span>{" "}
+                          {conversation.lastMessage.content}
+                        </>
+                      ) : (
+                        conversation.source === "messenger" ? "Facebook Messenger" :
+                        conversation.source === "instagram" ? "Instagram DM" :
+                        conversation.source
+                      )}
                     </p>
                     {conversation.unreadCount > 0 && (
                       <Badge className="shrink-0 bg-[#ffd666] text-gray-800 font-semibold hover:bg-[#ffd666]">
