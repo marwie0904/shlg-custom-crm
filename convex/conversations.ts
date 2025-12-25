@@ -327,6 +327,19 @@ export const ingestMetaMessage = mutation({
 
       const contactId = await ctx.db.insert("contacts", contactData);
       contact = await ctx.db.get(contactId);
+
+      // Also create an opportunity for the new contact in Fresh Leads stage
+      const contactName = `${contactData.firstName} ${contactData.lastName}`.trim();
+      await ctx.db.insert("opportunities", {
+        title: contactName,
+        contactId: contactId,
+        pipelineId: "Main Lead Flow",
+        stageId: "Fresh Leads",
+        estimatedValue: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      console.log(`[Convex] Created opportunity for new contact: ${contactName}`);
     } else {
       // ALWAYS update existing contact with profile info if we have new data
       const updates: { firstName?: string; lastName?: string; avatar?: string; updatedAt: number } = { updatedAt: now };
