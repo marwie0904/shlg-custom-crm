@@ -26,7 +26,6 @@ import {
   Receipt,
   Plus,
   MoreHorizontal,
-  Send,
   Download,
   Trash2,
   ChevronDown,
@@ -37,6 +36,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ContactMessages } from "@/components/conversations/ContactMessages";
 
 // Skeleton loader for the contact detail page
 function ContactDetailSkeleton() {
@@ -371,7 +371,6 @@ export default function ContactDetailPage() {
   const params = useParams();
   const contactId = params.id as string;
   const [activeTab, setActiveTab] = useState<TabType>("messages");
-  const [messageInput, setMessageInput] = useState("");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentData | null>(null);
@@ -1042,35 +1041,10 @@ export default function ContactDetailPage() {
           <div className="flex-1 flex flex-col">
             {/* Messages Tab */}
             {activeTab === "messages" && (
-              <>
-                <div className="flex-1 p-4 overflow-y-auto">
-                  {contactData.conversations && contactData.conversations.length > 0 ? (
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-500 text-center">
-                        {contactData.conversations.length} conversation(s) - Messages coming soon
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-sm text-gray-500">No messages yet</p>
-                    </div>
-                  )}
-                </div>
-                <div className="border-t p-4">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Type a message..."
-                      value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
-                      className="flex-1 rounded-lg border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                    <Button size="icon">
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </>
+              <ContactMessages
+                contactId={contactId as Id<"contacts">}
+                className="flex-1"
+              />
             )}
 
             {/* Tasks Tab */}

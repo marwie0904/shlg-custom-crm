@@ -33,6 +33,7 @@ import {
   MessageSource,
 } from "@/lib/types/opportunities";
 import { AddAppointmentModal, AppointmentData } from "@/components/calendars/AddAppointmentModal";
+import { ContactMessages } from "@/components/conversations/ContactMessages";
 import {
   FileText,
   MessageSquare,
@@ -579,14 +580,15 @@ export function OpportunityDetailModal({
   );
   };
 
-  const renderMessagesTab = () => (
-    <div className="flex items-center justify-center h-[400px] text-gray-500">
-      <div className="text-center">
-        <MessageSquare className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-        <p>Messages will be displayed here</p>
-      </div>
-    </div>
-  );
+  const renderMessagesTab = () => {
+    if (!opportunity) return null;
+    return (
+      <ContactMessages
+        contactId={opportunity.contactId}
+        className="h-[400px]"
+      />
+    );
+  };
 
   const renderTasksTab = () => {
     if (!opportunity) return null;
