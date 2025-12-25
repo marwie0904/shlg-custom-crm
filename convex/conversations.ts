@@ -253,9 +253,13 @@ export const ingestMetaMessage = mutation({
       type: v.string(),
       size: v.optional(v.number()),
     }))),
+    // Sender profile info from Meta API
+    senderFirstName: v.optional(v.string()),
+    senderLastName: v.optional(v.string()),
+    senderProfilePic: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { source, senderId, messageId, content, timestamp, attachments } = args;
+    const { source, senderId, messageId, content, timestamp, attachments, senderFirstName, senderLastName, senderProfilePic } = args;
 
     // Check if message already exists (deduplication)
     const existingMessage = await ctx.db
@@ -298,17 +302,24 @@ export const ingestMetaMessage = mutation({
           firstName: string;
           lastName: string;
           source: string;
+          avatar?: string;
           metaPsid?: string;
           metaIgsid?: string;
           createdAt: number;
           updatedAt: number;
         } = {
-          firstName: source === "messenger" ? "Messenger" : "Instagram",
-          lastName: `User ${senderId.slice(-4)}`,
+          // Use profile name if available, otherwise fallback to generic
+          firstName: senderFirstName || (source === "messenger" ? "Messenger" : "Instagram"),
+          lastName: senderLastName || `User ${senderId.slice(-4)}`,
           source: source === "messenger" ? "Facebook Messenger" : "Instagram DM",
           createdAt: now,
           updatedAt: now,
         };
+
+        // Add profile picture if available
+        if (senderProfilePic) {
+          contactData.avatar = senderProfilePic;
+        }
 
         if (source === "messenger") {
           contactData.metaPsid = senderId;
@@ -318,6 +329,29 @@ export const ingestMetaMessage = mutation({
 
         const contactId = await ctx.db.insert("contacts", contactData);
         contact = await ctx.db.get(contactId);
+      } else {
+        // Update existing contact with profile info if we have new data
+        const updates: { firstName?: string; lastName?: string; avatar?: string; updatedAt: number } = { updatedAt: now };
+        let shouldUpdate = false;
+
+        // Update name if contact has generic name and we now have real name
+        if (senderFirstName && (contact.firstName === "Messenger" || contact.firstName === "Instagram")) {
+          updates.firstName = senderFirstName;
+          shouldUpdate = true;
+        }
+        if (senderLastName && contact.lastName.startsWith("User ")) {
+          updates.lastName = senderLastName;
+          shouldUpdate = true;
+        }
+        if (senderProfilePic && !contact.avatar) {
+          updates.avatar = senderProfilePic;
+          shouldUpdate = true;
+        }
+
+        if (shouldUpdate) {
+          await ctx.db.patch(contact._id, updates);
+          contact = await ctx.db.get(contact._id);
+        }
       }
 
       // Create conversation

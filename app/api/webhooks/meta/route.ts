@@ -4,6 +4,59 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+const GRAPH_API_VERSION = "v21.0";
+
+// Fetch user profile from Meta Graph API
+async function fetchUserProfile(userId: string, source: "messenger" | "instagram"): Promise<{
+  firstName?: string;
+  lastName?: string;
+  name?: string;
+  profilePic?: string;
+}> {
+  const accessToken = process.env.META_PAGE_ACCESS_TOKEN;
+  if (!accessToken) return {};
+
+  try {
+    const fields = source === "instagram"
+      ? "id,username,name"
+      : "id,first_name,last_name,name,profile_pic";
+
+    const response = await fetch(
+      `https://graph.facebook.com/${GRAPH_API_VERSION}/${userId}?fields=${fields}&access_token=${accessToken}`
+    );
+
+    if (!response.ok) {
+      console.log(`[Meta Webhook] Could not fetch profile for ${userId}:`, response.status);
+      return {};
+    }
+
+    const data = await response.json();
+    console.log(`[Meta Webhook] Fetched profile for ${userId}:`, data);
+
+    // For Instagram, name might be a single field
+    if (source === "instagram") {
+      const name = data.name || data.username || "";
+      const parts = name.split(" ");
+      return {
+        firstName: parts[0] || "Instagram",
+        lastName: parts.slice(1).join(" ") || "User",
+        name: name,
+        profilePic: data.profile_pic,
+      };
+    }
+
+    // For Messenger, we get first_name and last_name
+    return {
+      firstName: data.first_name,
+      lastName: data.last_name,
+      name: data.name,
+      profilePic: data.profile_pic,
+    };
+  } catch (error) {
+    console.error(`[Meta Webhook] Error fetching profile for ${userId}:`, error);
+    return {};
+  }
+}
 
 // Verify webhook signature from Meta
 function verifySignature(payload: string, signature: string | null): boolean {
@@ -136,6 +189,10 @@ async function processMessagingEvent(event: MessagingEvent, source: "messenger" 
     });
 
     try {
+      // Fetch user profile from Meta
+      const profile = await fetchUserProfile(senderId, source);
+      console.log(`[Meta Webhook] User profile:`, profile);
+
       // Call Convex to ingest the message
       await convex.mutation(api.conversations.ingestMetaMessage, {
         source,
@@ -144,6 +201,9 @@ async function processMessagingEvent(event: MessagingEvent, source: "messenger" 
         content: text,
         timestamp,
         attachments: attachments.length > 0 ? attachments : undefined,
+        senderFirstName: profile.firstName,
+        senderLastName: profile.lastName,
+        senderProfilePic: profile.profilePic,
       });
 
       console.log(`[Meta Webhook] Message ingested successfully: ${messageId}`);
