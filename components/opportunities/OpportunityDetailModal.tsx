@@ -285,8 +285,6 @@ export function OpportunityDetailModal({
   // Loading state - show skeleton while fetching opportunity details
   const isLoading = opportunityId && opportunity === undefined;
 
-  if (!opportunityId) return null;
-
   const stageName = opportunity
     ? stages?.find((s) => s._id === opportunity.stageId)?.name || opportunity.stageId
     : "";
@@ -846,7 +844,12 @@ export function OpportunityDetailModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] !max-w-[1024px] sm:!max-w-[1024px] p-0 gap-0 overflow-hidden">
-        {isLoading ? (
+        {!opportunityId ? (
+          // No opportunity selected
+          <div className="flex items-center justify-center h-[300px]">
+            <p className="text-gray-500">No opportunity selected</p>
+          </div>
+        ) : isLoading ? (
           // Loading skeleton
           <>
             <DialogHeader className="px-6 pt-6 pb-4 border-b">

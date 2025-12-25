@@ -311,14 +311,47 @@ export const create = mutation({
     ghlContactId: v.optional(v.string()),
     // Intake Reference
     intakeId: v.optional(v.id("intake")),
+    // Option to skip opportunity creation
+    skipOpportunityCreation: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return await ctx.db.insert("contacts", {
-      ...args,
+    const { skipOpportunityCreation, ...contactData } = args;
+
+    // Create the contact
+    const contactId = await ctx.db.insert("contacts", {
+      ...contactData,
       createdAt: now,
       updatedAt: now,
     });
+
+    // Create an opportunity for the new contact (unless explicitly skipped)
+    if (!skipOpportunityCreation) {
+      const contactName = `${args.firstName} ${args.lastName}`.trim();
+
+      // Get the Fresh Leads stage ID
+      const freshLeadsStage = await ctx.db
+        .query("pipelineStages")
+        .withIndex("by_pipeline", (q) => q.eq("pipeline", "Main Lead Flow"))
+        .filter((q) => q.eq(q.field("name"), "Fresh Leads"))
+        .first();
+
+      if (freshLeadsStage) {
+        await ctx.db.insert("opportunities", {
+          title: contactName,
+          contactId: contactId,
+          pipelineId: "Main Lead Flow",
+          stageId: freshLeadsStage._id,
+          estimatedValue: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } else {
+        console.error("[Convex] Fresh Leads stage not found - opportunity not created for contact:", contactId);
+      }
+    }
+
+    return contactId;
   },
 });
 
@@ -507,5 +540,59 @@ export const removeTag = mutation({
       updatedAt: Date.now(),
     });
     return args.id;
+  },
+});
+
+// Migration: Create opportunities for contacts that don't have one
+export const migrateContactsWithoutOpportunities = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // Get all contacts
+    const contacts = await ctx.db.query("contacts").collect();
+
+    // Get all opportunities to check which contacts already have one
+    const opportunities = await ctx.db.query("opportunities").collect();
+    const contactsWithOpportunities = new Set(opportunities.map((o) => o.contactId.toString()));
+
+    // Get the Fresh Leads stage
+    const freshLeadsStage = await ctx.db
+      .query("pipelineStages")
+      .withIndex("by_pipeline", (q) => q.eq("pipeline", "Main Lead Flow"))
+      .filter((q) => q.eq(q.field("name"), "Fresh Leads"))
+      .first();
+
+    if (!freshLeadsStage) {
+      return { error: "Fresh Leads stage not found. Please run pipelineStages.seedDefaultStages first." };
+    }
+
+    // Find contacts without opportunities
+    const contactsWithoutOpportunities = contacts.filter(
+      (c) => !contactsWithOpportunities.has(c._id.toString())
+    );
+
+    // Create opportunities for each
+    let created = 0;
+    for (const contact of contactsWithoutOpportunities) {
+      const contactName = `${contact.firstName} ${contact.lastName}`.trim();
+      await ctx.db.insert("opportunities", {
+        title: contactName,
+        contactId: contact._id,
+        pipelineId: "Main Lead Flow",
+        stageId: freshLeadsStage._id,
+        estimatedValue: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      created++;
+    }
+
+    return {
+      message: `Created ${created} opportunities for contacts that didn't have one.`,
+      totalContacts: contacts.length,
+      contactsWithOpportunities: contactsWithOpportunities.size,
+      contactsWithoutOpportunities: contactsWithoutOpportunities.length,
+    };
   },
 });

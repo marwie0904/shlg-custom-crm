@@ -12,6 +12,7 @@ import { AddTaskModal, NewTaskData } from "@/components/tasks/AddTaskModal";
 import { AddAppointmentModal, AppointmentData } from "@/components/calendars/AddAppointmentModal";
 import { AddInvoiceModal } from "@/components/invoices/AddInvoiceModal";
 import { InvoiceDetailModal } from "@/components/invoices/InvoiceDetailModal";
+import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -398,6 +399,7 @@ export default function ContactDetailPage() {
     updatedAt: number;
   } | null>(null);
   const [isInvoiceDetailOpen, setIsInvoiceDetailOpen] = useState(false);
+  const [isOpportunityDetailOpen, setIsOpportunityDetailOpen] = useState(false);
 
   const handleAppointmentClick = (apt: {
     _id: Id<"appointments">;
@@ -611,7 +613,10 @@ export default function ContactDetailPage() {
                   <>
                     <div className="flex items-center gap-3 text-sm mb-2">
                       <Building2 className="h-4 w-4 text-gray-400" />
-                      <span className="text-gray-700 underline cursor-pointer hover:text-gray-900">
+                      <span
+                        className="text-gray-700 underline cursor-pointer hover:text-gray-900"
+                        onClick={() => setIsOpportunityDetailOpen(true)}
+                      >
                         {primaryOpportunity.title}
                       </span>
                     </div>
@@ -1292,6 +1297,13 @@ export default function ContactDetailPage() {
           setIsInvoiceDetailOpen(open);
           if (!open) setSelectedInvoice(null);
         }}
+      />
+
+      {/* Opportunity Detail Modal */}
+      <OpportunityDetailModal
+        opportunityId={primaryOpportunity?._id ?? null}
+        open={isOpportunityDetailOpen}
+        onOpenChange={setIsOpportunityDetailOpen}
       />
     </div>
   );

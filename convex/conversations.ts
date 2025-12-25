@@ -337,16 +337,28 @@ export const ingestMetaMessage = mutation({
 
       // Also create an opportunity for the new contact in Fresh Leads stage
       const contactName = `${contactData.firstName} ${contactData.lastName}`.trim();
-      await ctx.db.insert("opportunities", {
-        title: contactName,
-        contactId: contactId,
-        pipelineId: "Main Lead Flow",
-        stageId: "Fresh Leads",
-        estimatedValue: 0,
-        createdAt: now,
-        updatedAt: now,
-      });
-      console.log(`[Convex] Created opportunity for new contact: ${contactName}`);
+
+      // Get the actual Fresh Leads stage ID
+      const freshLeadsStage = await ctx.db
+        .query("pipelineStages")
+        .withIndex("by_pipeline", (q) => q.eq("pipeline", "Main Lead Flow"))
+        .filter((q) => q.eq(q.field("name"), "Fresh Leads"))
+        .first();
+
+      if (freshLeadsStage) {
+        await ctx.db.insert("opportunities", {
+          title: contactName,
+          contactId: contactId,
+          pipelineId: "Main Lead Flow",
+          stageId: freshLeadsStage._id,
+          estimatedValue: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        console.log(`[Convex] Created opportunity for new contact: ${contactName}`);
+      } else {
+        console.error("[Convex] Fresh Leads stage not found - opportunity not created");
+      }
     } else {
       // ALWAYS update existing contact with profile info if we have new data
       const updates: { firstName?: string; lastName?: string; avatar?: string; updatedAt: number } = { updatedAt: now };
