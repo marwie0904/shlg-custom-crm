@@ -4,17 +4,37 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Conversation, MessageSource } from "@/lib/placeholder-data";
+import { Id } from "@/convex/_generated/dataModel";
 import { MessageCircle, Instagram, Settings, Mail } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
-interface ConversationListProps {
-  conversations: Conversation[];
-  selectedId: string | null;
-  onSelect: (conversation: Conversation) => void;
+type MessageSource = "messenger" | "instagram" | "sms" | "email";
+
+interface ConvexContact {
+  _id: Id<"contacts">;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  source?: string;
 }
 
-function getSourceIcon(source: MessageSource) {
+interface ConvexConversation {
+  _id: Id<"conversations">;
+  contactId: Id<"contacts">;
+  source: string;
+  unreadCount: number;
+  lastMessageAt: number;
+  contact?: ConvexContact | null;
+}
+
+interface ConversationListProps {
+  conversations: ConvexConversation[];
+  selectedId: Id<"conversations"> | null;
+  onSelect: (conversationId: Id<"conversations">) => void;
+}
+
+function getSourceIcon(source: string) {
   switch (source) {
     case "messenger":
       return <MessageCircle className="size-3.5 text-blue-500" />;
@@ -55,19 +75,30 @@ function getAvatarColor(id: string) {
   return avatarColors[Math.abs(hash) % avatarColors.length];
 }
 
-function getLastMessage(conversation: Conversation) {
-  const messages = conversation.messages;
-  if (messages.length === 0) return "No messages";
-  const lastMessage = messages[messages.length - 1];
-  const prefix = lastMessage.isOutgoing ? "You: " : "";
-  return prefix + lastMessage.content;
-}
-
 export function ConversationList({
   conversations,
   selectedId,
   onSelect,
 }: ConversationListProps) {
+  if (!conversations || conversations.length === 0) {
+    return (
+      <div className="flex h-full flex-col border-r bg-white">
+        <div className="border-b p-4">
+          <h2 className="text-lg font-semibold text-gray-900">Messages</h2>
+        </div>
+        <div className="flex-1 flex items-center justify-center p-4">
+          <div className="text-center">
+            <MessageCircle className="mx-auto size-12 text-gray-300 mb-3" />
+            <p className="text-sm text-gray-500">No conversations yet</p>
+            <p className="text-xs text-gray-400 mt-1">
+              Messages from Facebook & Instagram will appear here
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col border-r bg-white">
       <div className="border-b p-4">
@@ -75,53 +106,57 @@ export function ConversationList({
       </div>
       <ScrollArea className="flex-1">
         <div className="divide-y">
-          {conversations.map((conversation) => (
-            <button
-              key={conversation.id}
-              onClick={() => onSelect(conversation)}
-              className={cn(
-                "flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-gray-50",
-                selectedId === conversation.id && "bg-blue-50 hover:bg-blue-50"
-              )}
-            >
-              {/* Avatar with initials and source icon */}
-              <div className="relative shrink-0">
-                <Avatar className="size-12">
-                  <AvatarFallback className={cn("text-white text-sm font-medium", getAvatarColor(conversation.contact.id))}>
-                    {getInitials(
-                      conversation.contact.firstName,
-                      conversation.contact.lastName
-                    )}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-white shadow-sm">
-                  {getSourceIcon(conversation.contact.source)}
-                </div>
-              </div>
+          {conversations.map((conversation) => {
+            const contact = conversation.contact;
+            if (!contact) return null;
 
-              {/* Message content */}
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-gray-900">
-                    {conversation.contact.firstName} {conversation.contact.lastName}
-                  </span>
-                  <span className="shrink-0 text-xs text-gray-500">
-                    {formatDistanceToNow(conversation.lastMessageAt, { addSuffix: true })}
-                  </span>
+            return (
+              <button
+                key={conversation._id}
+                onClick={() => onSelect(conversation._id)}
+                className={cn(
+                  "flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-gray-50",
+                  selectedId === conversation._id && "bg-blue-50 hover:bg-blue-50"
+                )}
+              >
+                {/* Avatar with initials and source icon */}
+                <div className="relative shrink-0">
+                  <Avatar className="size-12">
+                    <AvatarFallback className={cn("text-white text-sm font-medium", getAvatarColor(contact._id))}>
+                      {getInitials(contact.firstName, contact.lastName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full bg-white shadow-sm">
+                    {getSourceIcon(conversation.source)}
+                  </div>
                 </div>
-                <div className="mt-1 flex items-start justify-between gap-2">
-                  <p className="text-sm text-gray-600 line-clamp-2">
-                    {getLastMessage(conversation)}
-                  </p>
-                  {conversation.unreadCount > 0 && (
-                    <Badge className="shrink-0 bg-[#ffd666] text-gray-800 font-semibold hover:bg-[#ffd666]">
-                      {conversation.unreadCount}
-                    </Badge>
-                  )}
+
+                {/* Message content */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">
+                      {contact.firstName} {contact.lastName}
+                    </span>
+                    <span className="shrink-0 text-xs text-gray-500">
+                      {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-start justify-between gap-2">
+                    <p className="text-sm text-gray-600 line-clamp-2">
+                      {conversation.source === "messenger" ? "Facebook Messenger" :
+                       conversation.source === "instagram" ? "Instagram DM" :
+                       conversation.source}
+                    </p>
+                    {conversation.unreadCount > 0 && (
+                      <Badge className="shrink-0 bg-[#ffd666] text-gray-800 font-semibold hover:bg-[#ffd666]">
+                        {conversation.unreadCount}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </ScrollArea>
     </div>

@@ -3,7 +3,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Conversation, MessageSource } from "@/lib/placeholder-data";
+import { Id } from "@/convex/_generated/dataModel";
 import {
   X,
   Mail,
@@ -11,17 +11,36 @@ import {
   MessageCircle,
   Instagram,
   Settings,
-  Briefcase,
-  DollarSign,
-  Target,
+  User,
 } from "lucide-react";
 
+interface ConvexContact {
+  _id: Id<"contacts">;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  source?: string;
+  metaPsid?: string;
+  metaIgsid?: string;
+}
+
+interface ConvexConversation {
+  _id: Id<"conversations">;
+  contactId: Id<"contacts">;
+  source: string;
+  unreadCount: number;
+  lastMessageAt: number;
+  metaSenderId?: string;
+  contact?: ConvexContact | null;
+}
+
 interface ContactDetailsProps {
-  conversation: Conversation | null;
+  conversation: ConvexConversation | null;
   onClose: () => void;
 }
 
-function getSourceIcon(source: MessageSource) {
+function getSourceIcon(source: string) {
   switch (source) {
     case "messenger":
       return <MessageCircle className="size-5 text-blue-500" />;
@@ -36,7 +55,7 @@ function getSourceIcon(source: MessageSource) {
   }
 }
 
-function getSourceLabel(source: MessageSource) {
+function getSourceLabel(source: string) {
   switch (source) {
     case "messenger":
       return "Facebook Messenger";
@@ -47,7 +66,7 @@ function getSourceLabel(source: MessageSource) {
     case "sms":
       return "SMS";
     default:
-      return "Unknown";
+      return source || "Unknown";
   }
 }
 
@@ -55,27 +74,19 @@ function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-  }).format(value);
-}
-
 export function ContactDetails({ conversation, onClose }: ContactDetailsProps) {
-  if (!conversation) {
+  if (!conversation || !conversation.contact) {
     return null;
   }
 
-  const { contact } = conversation;
+  const contact = conversation.contact;
 
   return (
     <div className="flex h-full w-80 flex-col border-l bg-white">
       {/* Header */}
       <div className="flex items-center justify-between border-b p-4">
         <h3 className="font-semibold text-gray-900">Contact Details</h3>
-        <Button variant="ghost" size="icon-sm" onClick={onClose}>
+        <Button variant="ghost" size="icon" onClick={onClose}>
           <X className="size-4" />
         </Button>
       </div>
@@ -92,6 +103,10 @@ export function ContactDetails({ conversation, onClose }: ContactDetailsProps) {
           <h4 className="mt-3 text-lg font-semibold text-gray-900">
             {contact.firstName} {contact.lastName}
           </h4>
+          <div className="mt-1 flex items-center gap-1 text-sm text-gray-500">
+            {getSourceIcon(conversation.source)}
+            <span>{getSourceLabel(conversation.source)}</span>
+          </div>
         </div>
 
         <Separator />
@@ -101,12 +116,12 @@ export function ContactDetails({ conversation, onClose }: ContactDetailsProps) {
           {/* Source */}
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-              {getSourceIcon(contact.source)}
+              {getSourceIcon(conversation.source)}
             </div>
             <div>
-              <p className="text-sm text-gray-500">Source</p>
+              <p className="text-sm text-gray-500">Channel</p>
               <p className="font-medium text-gray-900">
-                {getSourceLabel(contact.source)}
+                {getSourceLabel(conversation.source)}
               </p>
             </div>
           </div>
@@ -114,7 +129,7 @@ export function ContactDetails({ conversation, onClose }: ContactDetailsProps) {
           {/* Full Name */}
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-              <MessageCircle className="size-5 text-gray-500" />
+              <User className="size-5 text-gray-500" />
             </div>
             <div>
               <p className="text-sm text-gray-500">Full Name</p>
@@ -125,76 +140,62 @@ export function ContactDetails({ conversation, onClose }: ContactDetailsProps) {
           </div>
 
           {/* Email */}
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-              <Mail className="size-5 text-gray-500" />
+          {contact.email && (
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+                <Mail className="size-5 text-gray-500" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Email</p>
+                <a
+                  href={`mailto:${contact.email}`}
+                  className="font-medium text-[#012f66] hover:underline"
+                >
+                  {contact.email}
+                </a>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Email</p>
-              <a
-                href={`mailto:${contact.email}`}
-                className="font-medium text-[#012f66] hover:underline"
-              >
-                {contact.email}
-              </a>
-            </div>
-          </div>
+          )}
 
           {/* Phone */}
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-              <Phone className="size-5 text-gray-500" />
+          {contact.phone && (
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+                <Phone className="size-5 text-gray-500" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">Phone Number</p>
+                <a
+                  href={`tel:${contact.phone}`}
+                  className="font-medium text-[#012f66] hover:underline"
+                >
+                  {contact.phone}
+                </a>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Phone Number</p>
-              <a
-                href={`tel:${contact.phone}`}
-                className="font-medium text-[#012f66] hover:underline"
-              >
-                {contact.phone}
-              </a>
-            </div>
-          </div>
-        </div>
+          )}
 
-        {/* Opportunity Section */}
-        {contact.opportunity && (
-          <>
-            <Separator />
-            <div className="p-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Briefcase className="size-5 text-gray-700" />
-                <h4 className="font-semibold text-gray-900">Opportunity</h4>
+          {/* Meta Sender ID (for debugging/reference) */}
+          {conversation.metaSenderId && (
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+                {conversation.source === "instagram" ? (
+                  <Instagram className="size-5 text-pink-500" />
+                ) : (
+                  <MessageCircle className="size-5 text-blue-500" />
+                )}
               </div>
-              <div className="space-y-3 rounded-lg bg-gray-50 p-4">
-                <div>
-                  <p className="text-sm text-gray-500">Name</p>
-                  <p className="font-medium text-gray-900">
-                    {contact.opportunity.name}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <DollarSign className="size-4 text-green-600" />
-                  <div>
-                    <p className="text-sm text-gray-500">Value</p>
-                    <p className="font-medium text-gray-900">
-                      {formatCurrency(contact.opportunity.value)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Target className="size-4 text-blue-600" />
-                  <div>
-                    <p className="text-sm text-gray-500">Stage</p>
-                    <p className="font-medium text-gray-900">
-                      {contact.opportunity.stage}
-                    </p>
-                  </div>
-                </div>
+              <div>
+                <p className="text-sm text-gray-500">
+                  {conversation.source === "instagram" ? "Instagram ID" : "Messenger ID"}
+                </p>
+                <p className="font-mono text-xs text-gray-600 break-all">
+                  {conversation.metaSenderId}
+                </p>
               </div>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

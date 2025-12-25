@@ -152,6 +152,10 @@ export default defineSchema({
     // Intake Reference (tracks which intake created this contact)
     intakeId: v.optional(v.id("intake")),
 
+    // Meta/Facebook Integration
+    metaPsid: v.optional(v.string()), // Facebook Page-Scoped ID (for Messenger)
+    metaIgsid: v.optional(v.string()), // Instagram-Scoped ID (for Instagram DMs)
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -162,7 +166,9 @@ export default defineSchema({
     .index("by_intakeId", ["intakeId"])
     .index("by_createdAt", ["createdAt"])
     .index("by_source", ["source"])
-    .index("by_lastName", ["lastName"]),
+    .index("by_lastName", ["lastName"])
+    .index("by_metaPsid", ["metaPsid"])
+    .index("by_metaIgsid", ["metaIgsid"]),
 
   // ==========================================
   // PIPELINE STAGES
@@ -219,13 +225,17 @@ export default defineSchema({
     unreadCount: v.number(),
     lastMessageAt: v.number(),
 
+    // Meta/Facebook Integration
+    metaSenderId: v.optional(v.string()), // PSID or IGSID for this conversation
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_contactId", ["contactId"])
     .index("by_source", ["source"])
-    .index("by_lastMessageAt", ["lastMessageAt"]),
+    .index("by_lastMessageAt", ["lastMessageAt"])
+    .index("by_metaSenderId", ["metaSenderId"]),
 
   // ==========================================
   // MESSAGES
@@ -244,9 +254,13 @@ export default defineSchema({
       type: v.string(),
       size: v.optional(v.number()),
     }))),
+
+    // Meta/Facebook Integration
+    metaMessageId: v.optional(v.string()), // Mid from Meta for deduplication
   })
     .index("by_conversationId", ["conversationId"])
-    .index("by_timestamp", ["timestamp"]),
+    .index("by_timestamp", ["timestamp"])
+    .index("by_metaMessageId", ["metaMessageId"]),
 
   // ==========================================
   // INTAKE SUBMISSIONS

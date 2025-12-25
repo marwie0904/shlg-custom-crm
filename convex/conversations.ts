@@ -225,3 +225,205 @@ export const getMessages = query({
     return messages.reverse();
   },
 });
+
+// ==========================================
+// META WEBHOOK INGESTION
+// ==========================================
+
+export const getByMetaSenderId = query({
+  args: { metaSenderId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("conversations")
+      .withIndex("by_metaSenderId", (q) => q.eq("metaSenderId", args.metaSenderId))
+      .first();
+  },
+});
+
+export const ingestMetaMessage = mutation({
+  args: {
+    source: v.string(), // "messenger" | "instagram"
+    senderId: v.string(), // PSID or IGSID
+    messageId: v.string(), // Meta message ID for deduplication
+    content: v.string(),
+    timestamp: v.number(),
+    attachments: v.optional(v.array(v.object({
+      name: v.string(),
+      url: v.string(),
+      type: v.string(),
+      size: v.optional(v.number()),
+    }))),
+  },
+  handler: async (ctx, args) => {
+    const { source, senderId, messageId, content, timestamp, attachments } = args;
+
+    // Check if message already exists (deduplication)
+    const existingMessage = await ctx.db
+      .query("messages")
+      .withIndex("by_metaMessageId", (q) => q.eq("metaMessageId", messageId))
+      .first();
+
+    if (existingMessage) {
+      console.log(`[Convex] Message ${messageId} already exists, skipping`);
+      return existingMessage._id;
+    }
+
+    // Find existing conversation by metaSenderId
+    let conversation = await ctx.db
+      .query("conversations")
+      .withIndex("by_metaSenderId", (q) => q.eq("metaSenderId", senderId))
+      .first();
+
+    const now = Date.now();
+
+    // If no conversation exists, create one with a new contact
+    if (!conversation) {
+      // Check if contact exists with this meta ID
+      let contact;
+      if (source === "messenger") {
+        contact = await ctx.db
+          .query("contacts")
+          .withIndex("by_metaPsid", (q) => q.eq("metaPsid", senderId))
+          .first();
+      } else {
+        contact = await ctx.db
+          .query("contacts")
+          .withIndex("by_metaIgsid", (q) => q.eq("metaIgsid", senderId))
+          .first();
+      }
+
+      // Create contact if doesn't exist
+      if (!contact) {
+        const contactData: {
+          firstName: string;
+          lastName: string;
+          source: string;
+          metaPsid?: string;
+          metaIgsid?: string;
+          createdAt: number;
+          updatedAt: number;
+        } = {
+          firstName: source === "messenger" ? "Messenger" : "Instagram",
+          lastName: `User ${senderId.slice(-4)}`,
+          source: source === "messenger" ? "Facebook Messenger" : "Instagram DM",
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        if (source === "messenger") {
+          contactData.metaPsid = senderId;
+        } else {
+          contactData.metaIgsid = senderId;
+        }
+
+        const contactId = await ctx.db.insert("contacts", contactData);
+        contact = await ctx.db.get(contactId);
+      }
+
+      // Create conversation
+      const conversationId = await ctx.db.insert("conversations", {
+        contactId: contact!._id,
+        source,
+        unreadCount: 1,
+        lastMessageAt: timestamp,
+        metaSenderId: senderId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      conversation = await ctx.db.get(conversationId);
+    }
+
+    // Create the message
+    const msgId = await ctx.db.insert("messages", {
+      conversationId: conversation!._id,
+      content,
+      timestamp,
+      isOutgoing: false,
+      read: false,
+      attachments,
+      metaMessageId: messageId,
+    });
+
+    // Update conversation
+    await ctx.db.patch(conversation!._id, {
+      lastMessageAt: timestamp,
+      unreadCount: (conversation!.unreadCount || 0) + 1,
+      updatedAt: now,
+    });
+
+    return msgId;
+  },
+});
+
+// Send message and optionally send via Meta API
+export const sendMessageWithMeta = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    content: v.string(),
+    attachments: v.optional(v.array(v.object({
+      name: v.string(),
+      url: v.string(),
+      type: v.string(),
+      size: v.optional(v.number()),
+    }))),
+  },
+  handler: async (ctx, args) => {
+    const conversation = await ctx.db.get(args.conversationId);
+    if (!conversation) throw new Error("Conversation not found");
+
+    const now = Date.now();
+
+    // Create message in database
+    const messageId = await ctx.db.insert("messages", {
+      conversationId: args.conversationId,
+      content: args.content,
+      timestamp: now,
+      isOutgoing: true,
+      read: true,
+      attachments: args.attachments,
+    });
+
+    // Update conversation
+    await ctx.db.patch(args.conversationId, {
+      lastMessageAt: now,
+      updatedAt: now,
+    });
+
+    // Return info needed to send via Meta API
+    return {
+      messageId,
+      metaSenderId: conversation.metaSenderId,
+      source: conversation.source,
+    };
+  },
+});
+
+// Update contact with profile info from Meta
+export const updateContactFromMeta = mutation({
+  args: {
+    contactId: v.id("contacts"),
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
+    avatar: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { contactId, ...updates } = args;
+    const contact = await ctx.db.get(contactId);
+    if (!contact) throw new Error("Contact not found");
+
+    const cleanUpdates: Record<string, string> = {};
+    if (updates.firstName) cleanUpdates.firstName = updates.firstName;
+    if (updates.lastName) cleanUpdates.lastName = updates.lastName;
+    if (updates.avatar) cleanUpdates.avatar = updates.avatar;
+
+    if (Object.keys(cleanUpdates).length > 0) {
+      await ctx.db.patch(contactId, {
+        ...cleanUpdates,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return contactId;
+  },
+});

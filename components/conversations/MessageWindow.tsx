@@ -7,22 +7,81 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Conversation } from "@/lib/placeholder-data";
-import { User, Briefcase, Send, Paperclip, Smile } from "lucide-react";
+import { Id } from "@/convex/_generated/dataModel";
+import { User, Briefcase, Send, Paperclip, Smile, MessageCircle, Instagram } from "lucide-react";
 import { format } from "date-fns";
 
+interface ConvexContact {
+  _id: Id<"contacts">;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  source?: string;
+}
+
+interface ConvexMessage {
+  _id: Id<"messages">;
+  conversationId: Id<"conversations">;
+  content: string;
+  timestamp: number;
+  isOutgoing: boolean;
+  read: boolean;
+  attachments?: Array<{
+    name: string;
+    url: string;
+    type: string;
+    size?: number;
+  }>;
+}
+
+interface ConvexConversation {
+  _id: Id<"conversations">;
+  contactId: Id<"contacts">;
+  source: string;
+  unreadCount: number;
+  lastMessageAt: number;
+  metaSenderId?: string;
+  contact?: ConvexContact | null;
+  messages?: ConvexMessage[];
+}
+
 interface MessageWindowProps {
-  conversation: Conversation | null;
+  conversation: ConvexConversation | null;
   onToggleContactDetails: () => void;
+  onSendMessage: (content: string) => void;
 }
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 }
 
+function getSourceIcon(source: string) {
+  switch (source) {
+    case "messenger":
+      return <MessageCircle className="size-4 text-blue-500" />;
+    case "instagram":
+      return <Instagram className="size-4 text-pink-500" />;
+    default:
+      return null;
+  }
+}
+
+function getSourceLabel(source: string) {
+  switch (source) {
+    case "messenger":
+      return "Facebook Messenger";
+    case "instagram":
+      return "Instagram DM";
+    default:
+      return source;
+  }
+}
+
 export function MessageWindow({
   conversation,
   onToggleContactDetails,
+  onSendMessage,
 }: MessageWindowProps) {
   const [message, setMessage] = useState("");
 
@@ -42,12 +101,25 @@ export function MessageWindow({
     );
   }
 
-  const { contact, messages } = conversation;
+  const contact = conversation.contact;
+  const messages = conversation.messages || [];
+
+  if (!contact) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-gray-200">
+            <Send className="size-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900">Contact not found</h3>
+        </div>
+      </div>
+    );
+  }
 
   const handleSend = () => {
     if (message.trim()) {
-      // In production, this would send the message
-      console.log("Sending message:", message);
+      onSendMessage(message);
       setMessage("");
     }
   };
@@ -70,10 +142,15 @@ export function MessageWindow({
             </AvatarFallback>
           </Avatar>
           <div>
-            <h2 className="font-semibold text-gray-900">
-              {contact.firstName} {contact.lastName}
-            </h2>
-            <p className="text-sm text-gray-500">{contact.email}</p>
+            <div className="flex items-center gap-2">
+              <h2 className="font-semibold text-gray-900">
+                {contact.firstName} {contact.lastName}
+              </h2>
+              {getSourceIcon(conversation.source)}
+            </div>
+            <p className="text-sm text-gray-500">
+              {contact.email || getSourceLabel(conversation.source)}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -86,64 +163,89 @@ export function MessageWindow({
             <User className="size-4" />
             Contact
           </Button>
-          {contact.opportunity && (
-            <Button variant="outline" size="sm" className="gap-2">
-              <Briefcase className="size-4" />
-              Opportunity
-            </Button>
-          )}
         </div>
       </div>
 
       {/* Messages */}
       <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4">
-          {messages.map((msg, index) => {
-            const showDateSeparator =
-              index === 0 ||
-              format(messages[index - 1].timestamp, "yyyy-MM-dd") !==
-                format(msg.timestamp, "yyyy-MM-dd");
+        {messages.length === 0 ? (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <MessageCircle className="mx-auto size-12 text-gray-300 mb-3" />
+              <p className="text-sm text-gray-500">No messages yet</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Start the conversation by sending a message
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {messages.map((msg, index) => {
+              const msgDate = new Date(msg.timestamp);
+              const prevMsgDate = index > 0 ? new Date(messages[index - 1].timestamp) : null;
+              const showDateSeparator =
+                index === 0 ||
+                (prevMsgDate && format(prevMsgDate, "yyyy-MM-dd") !== format(msgDate, "yyyy-MM-dd"));
 
-            return (
-              <div key={msg.id}>
-                {showDateSeparator && (
-                  <div className="my-4 flex items-center gap-4">
-                    <Separator className="flex-1" />
-                    <span className="text-xs text-gray-500">
-                      {format(msg.timestamp, "MMMM d, yyyy")}
-                    </span>
-                    <Separator className="flex-1" />
-                  </div>
-                )}
-                <div
-                  className={cn(
-                    "flex",
-                    msg.isOutgoing ? "justify-end" : "justify-start"
+              return (
+                <div key={msg._id}>
+                  {showDateSeparator && (
+                    <div className="my-4 flex items-center gap-4">
+                      <Separator className="flex-1" />
+                      <span className="text-xs text-gray-500">
+                        {format(msgDate, "MMMM d, yyyy")}
+                      </span>
+                      <Separator className="flex-1" />
+                    </div>
                   )}
-                >
                   <div
                     className={cn(
-                      "max-w-[70%] rounded-2xl px-4 py-2",
-                      msg.isOutgoing
-                        ? "bg-[#012f66] text-white"
-                        : "bg-gray-100 text-gray-900"
+                      "flex",
+                      msg.isOutgoing ? "justify-end" : "justify-start"
                     )}
                   >
-                    <p className="text-sm">{msg.content}</p>
-                    <p
+                    <div
                       className={cn(
-                        "mt-1 text-xs",
-                        msg.isOutgoing ? "text-blue-200" : "text-gray-500"
+                        "max-w-[70%] rounded-2xl px-4 py-2",
+                        msg.isOutgoing
+                          ? "bg-[#012f66] text-white"
+                          : "bg-gray-100 text-gray-900"
                       )}
                     >
-                      {format(msg.timestamp, "h:mm a")}
-                    </p>
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                      {msg.attachments && msg.attachments.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {msg.attachments.map((att, i) => (
+                            <a
+                              key={i}
+                              href={att.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn(
+                                "block text-xs underline",
+                                msg.isOutgoing ? "text-blue-200" : "text-blue-600"
+                              )}
+                            >
+                              {att.name || att.type}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                      <p
+                        className={cn(
+                          "mt-1 text-xs",
+                          msg.isOutgoing ? "text-blue-200" : "text-gray-500"
+                        )}
+                      >
+                        {format(msgDate, "h:mm a")}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </ScrollArea>
 
       {/* Message Input */}
