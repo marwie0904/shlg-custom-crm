@@ -6,15 +6,15 @@ import Header from "./Header";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { Loader2 } from "lucide-react";
 
-// Routes that should not show the sidebar/header
-const AUTH_ROUTES = ["/login", "/change-password", "/verify", "/verify-pending"];
+// Routes that should not show the sidebar/header (auth routes and public routes)
+const PUBLIC_ROUTES = ["/login", "/change-password", "/verify", "/verify-pending", "/invoice"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isLoading, user } = useAuth();
 
-  // Check if current route is an auth route
-  const isAuthRoute = AUTH_ROUTES.some((route) => pathname.startsWith(route));
+  // Check if current route is a public route (no sidebar/header)
+  const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 
   // Show loading state while checking auth
   if (isLoading) {
@@ -25,8 +25,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // For auth routes, render without sidebar/header
-  if (isAuthRoute) {
+  // For public routes, render without sidebar/header
+  if (isPublicRoute) {
     return <>{children}</>;
   }
 

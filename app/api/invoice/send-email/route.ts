@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const MAKE_WEBHOOK_URL = process.env.MAKE_INVOICE_EMAIL_WEBHOOK;
 const LOGO_URL = 'https://storage.googleapis.com/msgsndr/afYLuZPi37CZR1IpJlfn/media/68f107369d906785d9458314.png';
-const INVOICE_VIEWER_BASE_URL = process.env.INVOICE_VIEWER_URL || 'https://shlf-ghl-automations-zsl6v.ondigitalocean.app';
+const INVOICE_VIEWER_BASE_URL = process.env.INVOICE_VIEWER_URL || 'https://shlg-custom-crm.vercel.app';
 
 interface SendEmailRequest {
   to: string;
