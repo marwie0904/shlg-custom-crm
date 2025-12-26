@@ -7,7 +7,7 @@ import { useAuth } from "@/app/providers/AuthProvider";
 import { Loader2 } from "lucide-react";
 
 // Routes that should not show the sidebar/header (auth routes and public routes)
-const PUBLIC_ROUTES = ["/login", "/change-password", "/verify", "/verify-pending", "/invoice"];
+const PUBLIC_ROUTES = ["/login", "/change-password", "/verify", "/verify-pending", "/invoice/"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
