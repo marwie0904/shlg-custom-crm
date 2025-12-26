@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
-import Header from "@/components/layout/Header";
 import { ConvexClientProvider } from "./providers/ConvexClientProvider";
+import { AuthProvider } from "./providers/AuthProvider";
+import AppShell from "@/components/layout/AppShell";
 import { Toaster } from "sonner";
 
 const geistSans = Geist({
@@ -32,16 +32,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ConvexClientProvider>
-          <Toaster position="top-right" richColors />
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <Header />
-              <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
-                {children}
-              </main>
-            </div>
-          </div>
+          <AuthProvider>
+            <Toaster position="top-right" richColors />
+            <AppShell>{children}</AppShell>
+          </AuthProvider>
         </ConvexClientProvider>
       </body>
     </html>

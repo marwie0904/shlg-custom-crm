@@ -41,9 +41,22 @@ export const create = mutation({
     avatar: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Check if email already exists
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (existing) {
+      throw new Error("User with this email already exists");
+    }
+
     const now = Date.now();
     return await ctx.db.insert("users", {
       ...args,
+      temporaryPassword: "SHLF2026",
+      mustChangePassword: true,
+      emailVerified: false,
+      status: "pending",
       createdAt: now,
       updatedAt: now,
     });
@@ -101,6 +114,10 @@ export const seedDefaultUsers = mutation({
       defaultStaff.map((user) =>
         ctx.db.insert("users", {
           ...user,
+          temporaryPassword: "SHLF2026",
+          mustChangePassword: true,
+          emailVerified: false,
+          status: "pending",
           createdAt: now,
           updatedAt: now,
         })
@@ -108,5 +125,56 @@ export const seedDefaultUsers = mutation({
     );
 
     return { message: "Default users seeded successfully" };
+  },
+});
+
+// Suspend a user
+export const suspend = mutation({
+  args: { id: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.id);
+    if (!user) throw new Error("User not found");
+
+    await ctx.db.patch(args.id, {
+      status: "suspended",
+      updatedAt: Date.now(),
+    });
+    return args.id;
+  },
+});
+
+// Activate a user
+export const activate = mutation({
+  args: { id: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.id);
+    if (!user) throw new Error("User not found");
+
+    await ctx.db.patch(args.id, {
+      status: "active",
+      updatedAt: Date.now(),
+    });
+    return args.id;
+  },
+});
+
+// Reset password to temp password
+export const resetPassword = mutation({
+  args: { id: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.id);
+    if (!user) throw new Error("User not found");
+
+    await ctx.db.patch(args.id, {
+      temporaryPassword: "SHLF2026",
+      passwordHash: undefined,
+      mustChangePassword: true,
+      emailVerified: false,
+      verificationToken: undefined,
+      verificationTokenExpiry: undefined,
+      status: "pending",
+      updatedAt: Date.now(),
+    });
+    return args.id;
   },
 });

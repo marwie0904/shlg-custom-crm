@@ -237,6 +237,45 @@ export function AddAppointmentModal({
           participantEmail: selectedContact?.email || undefined,
           participantPhone: selectedContact?.phone || undefined,
         });
+
+        // Send confirmation email if contact has email
+        if (selectedContact?.email) {
+          try {
+            // Convert time string to ISO format for the API
+            const [time, period] = formData.time.split(' ');
+            const [hours, minutes] = time.split(':');
+            let hour24 = parseInt(hours);
+            if (period === 'PM' && hour24 !== 12) hour24 += 12;
+            if (period === 'AM' && hour24 === 12) hour24 = 0;
+
+            const appointmentDateTime = new Date(formData.date);
+            appointmentDateTime.setHours(hour24, parseInt(minutes), 0, 0);
+
+            const emailResponse = await fetch('/api/appointment/send-email', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                to: selectedContact.email,
+                firstName: selectedContact.firstName,
+                fullName: `${selectedContact.firstName} ${selectedContact.lastName}`,
+                phone: selectedContact.phone,
+                meetingType: formData.title,
+                startTime: appointmentDateTime.toISOString(),
+                meetingLocation: undefined, // Can be extended to include location
+              }),
+            });
+
+            const emailResult = await emailResponse.json();
+            if (emailResult.success) {
+              console.log('Appointment confirmation email sent successfully');
+            } else {
+              console.error('Failed to send appointment email:', emailResult.error);
+            }
+          } catch (emailError) {
+            console.error('Error sending appointment email:', emailError);
+            // Don't fail the entire operation if email fails
+          }
+        }
       }
 
       handleClose();

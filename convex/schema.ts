@@ -718,9 +718,34 @@ export default defineSchema({
     role: v.optional(v.string()), // "admin", "attorney", "paralegal", "staff"
     avatar: v.optional(v.string()),
 
+    // Auth fields
+    passwordHash: v.optional(v.string()),
+    temporaryPassword: v.optional(v.string()), // Plaintext temp password (cleared after first login)
+    mustChangePassword: v.boolean(), // True for new users
+    emailVerified: v.boolean(),
+    verificationToken: v.optional(v.string()),
+    verificationTokenExpiry: v.optional(v.number()),
+    status: v.string(), // "pending" | "active" | "suspended"
+    lastLoginAt: v.optional(v.number()),
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_verificationToken", ["verificationToken"])
+    .index("by_status", ["status"]),
+
+  // ==========================================
+  // SESSIONS (Auth sessions)
+  // ==========================================
+  sessions: defineTable({
+    userId: v.id("users"),
+    token: v.string(),
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_token", ["token"])
+    .index("by_userId", ["userId"])
+    .index("by_expiresAt", ["expiresAt"]),
 });
