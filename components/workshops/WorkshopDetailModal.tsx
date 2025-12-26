@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { format } from "date-fns";
 import { AddTaskModal, NewTaskData } from "@/components/tasks/AddTaskModal";
+import { AddAttendeeModal } from "@/components/workshops/AddAttendeeModal";
 
 type TabType = "details" | "tasks" | "attendees";
 
@@ -122,6 +123,7 @@ export function WorkshopDetailModal({
 }: WorkshopDetailModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [isAddAttendeeOpen, setIsAddAttendeeOpen] = useState(false);
 
   // Fetch workshop with details
   const workshop = useQuery(
@@ -139,6 +141,7 @@ export function WorkshopDetailModal({
     if (open) {
       setActiveTab("details");
       setIsAddTaskOpen(false);
+      setIsAddAttendeeOpen(false);
     }
   }, [open]);
 
@@ -376,11 +379,23 @@ export function WorkshopDetailModal({
         <h3 className="text-sm font-medium text-gray-500">
           Attendees ({workshop.registrations.length})
         </h3>
-        <Button variant="outline" size="sm">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsAddAttendeeOpen(true)}
+        >
           <Plus className="h-4 w-4 mr-1" />
           Add Attendee
         </Button>
       </div>
+
+      {/* Add Attendee Modal */}
+      <AddAttendeeModal
+        workshopId={workshopId!}
+        open={isAddAttendeeOpen}
+        onOpenChange={setIsAddAttendeeOpen}
+        existingContactIds={workshop.registrations.map((r) => r.contactId)}
+      />
 
       {workshop.registrations.length > 0 ? (
         <div className="space-y-2">

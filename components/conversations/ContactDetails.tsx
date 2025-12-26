@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -12,6 +13,7 @@ import {
   Instagram,
   Settings,
   User,
+  ExternalLink,
 } from "lucide-react";
 
 interface ConvexContact {
@@ -100,9 +102,14 @@ export function ContactDetails({ conversation, onClose }: ContactDetailsProps) {
               {getInitials(contact.firstName, contact.lastName)}
             </AvatarFallback>
           </Avatar>
-          <h4 className="mt-3 text-lg font-semibold text-gray-900">
+          <Link
+            href={`/contacts/${contact._id}`}
+            target="_blank"
+            className="mt-3 flex items-center gap-1.5 text-lg font-semibold text-gray-900 hover:text-[#012f66] transition-colors group"
+          >
             {contact.firstName} {contact.lastName}
-          </h4>
+            <ExternalLink className="size-4 text-gray-400 group-hover:text-[#012f66]" />
+          </Link>
           <div className="mt-1 flex items-center gap-1 text-sm text-gray-500">
             {getSourceIcon(conversation.source)}
             <span>{getSourceLabel(conversation.source)}</span>
