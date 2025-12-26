@@ -31,10 +31,10 @@ function VerifyContent() {
 
         if (response.ok) {
           setStatus("success");
-          setMessage("Your email has been verified successfully!");
-          // Redirect to dashboard after 2 seconds
+          setMessage("Your email has been verified successfully! Please log in to continue.");
+          // Redirect to login after 2 seconds
           setTimeout(() => {
-            router.push("/");
+            router.push("/login");
           }, 2000);
         } else {
           setStatus("error");
@@ -64,7 +64,7 @@ function VerifyContent() {
           <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-900">Email Verified!</h1>
           <p className="text-gray-600 mt-2">{message}</p>
-          <p className="text-sm text-gray-500 mt-4">Redirecting to dashboard...</p>
+          <p className="text-sm text-gray-500 mt-4">Redirecting to login...</p>
         </>
       )}
 
