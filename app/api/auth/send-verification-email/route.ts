@@ -85,14 +85,42 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const verificationLink = `${appUrl}/verify?token=${verificationToken}`;
 
+    // Build HTML email content
+    const htmlBody = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background-color: #f8f9fa; border-radius: 8px; padding: 40px; text-align: center;">
+    <h1 style="color: #1a365d; margin-bottom: 20px;">SHLF Intake CRM</h1>
+    <p style="font-size: 16px; margin-bottom: 30px;">
+      Hi ${userName},<br><br>
+      Please click the button below to verify your email address for SHLF Intake CRM.
+    </p>
+    <a href="${verificationLink}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-size: 16px; font-weight: bold;">
+      Verify Email Address
+    </a>
+    <p style="font-size: 14px; color: #666; margin-top: 30px;">
+      This link will expire in 24 hours.<br>
+      If you didn't request this, please ignore this email.
+    </p>
+  </div>
+</body>
+</html>
+    `.trim();
+
     const response = await fetch(process.env.MAKE_VERIFICATION_EMAIL_WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         to: userEmail,
+        subject: "Verify Your Email - SHLF Intake CRM",
+        htmlBody,
         userName,
         verificationLink,
-        expiresIn: "24 hours",
       }),
     });
 
