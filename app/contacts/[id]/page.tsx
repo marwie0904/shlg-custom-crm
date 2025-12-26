@@ -13,6 +13,7 @@ import { AddAppointmentModal, AppointmentData } from "@/components/calendars/Add
 import { AddInvoiceModal } from "@/components/invoices/AddInvoiceModal";
 import { InvoiceDetailModal } from "@/components/invoices/InvoiceDetailModal";
 import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
+import { EditContactModal } from "@/components/contacts/EditContactModal";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -400,6 +401,7 @@ export default function ContactDetailPage() {
   } | null>(null);
   const [isInvoiceDetailOpen, setIsInvoiceDetailOpen] = useState(false);
   const [isOpportunityDetailOpen, setIsOpportunityDetailOpen] = useState(false);
+  const [isEditContactOpen, setIsEditContactOpen] = useState(false);
 
   const handleAppointmentClick = (apt: {
     _id: Id<"appointments">;
@@ -585,7 +587,11 @@ export default function ContactDetailPage() {
             <CollapsibleSection
               title="Contact Information"
               actions={
-                <Button variant="ghost" size="icon-sm">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => setIsEditContactOpen(true)}
+                >
                   <Pencil className="h-4 w-4 text-gray-400" />
                 </Button>
               }
@@ -684,7 +690,14 @@ export default function ContactDetailPage() {
             <CollapsibleSection
               title="Appointments"
               actions={
-                <Button variant="ghost" size="sm">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedAppointment(null);
+                    setIsAppointmentModalOpen(true);
+                  }}
+                >
                   <Plus className="h-4 w-4" />
                 </Button>
               }
@@ -1279,6 +1292,7 @@ export default function ContactDetailPage() {
         open={isAppointmentModalOpen}
         onOpenChange={handleAppointmentModalClose}
         appointment={selectedAppointment}
+        defaultContactId={contactId as Id<"contacts">}
       />
 
       {/* Add Invoice Modal */}
@@ -1304,6 +1318,13 @@ export default function ContactDetailPage() {
         opportunityId={primaryOpportunity?._id ?? null}
         open={isOpportunityDetailOpen}
         onOpenChange={setIsOpportunityDetailOpen}
+      />
+
+      {/* Edit Contact Modal */}
+      <EditContactModal
+        open={isEditContactOpen}
+        onOpenChange={setIsEditContactOpen}
+        contact={contactData}
       />
     </div>
   );

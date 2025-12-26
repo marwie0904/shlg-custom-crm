@@ -257,10 +257,14 @@ export default defineSchema({
 
     // Meta/Facebook Integration
     metaMessageId: v.optional(v.string()), // Mid from Meta for deduplication
+
+    // RingCentral Integration
+    ringcentralMessageId: v.optional(v.string()), // RingCentral message ID for deduplication
   })
     .index("by_conversationId", ["conversationId"])
     .index("by_timestamp", ["timestamp"])
-    .index("by_metaMessageId", ["metaMessageId"]),
+    .index("by_metaMessageId", ["metaMessageId"])
+    .index("by_ringcentralMessageId", ["ringcentralMessageId"]),
 
   // ==========================================
   // INTAKE SUBMISSIONS

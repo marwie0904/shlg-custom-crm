@@ -66,6 +66,7 @@ interface AddAppointmentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   appointment?: AppointmentData | null; // If provided, modal is in edit mode
+  defaultContactId?: Id<"contacts">; // Pre-select contact when creating from contact page
 }
 
 interface AppointmentFormData {
@@ -102,6 +103,7 @@ export function AddAppointmentModal({
   open,
   onOpenChange,
   appointment,
+  defaultContactId,
 }: AddAppointmentModalProps) {
   const isEditMode = !!appointment;
 
@@ -130,7 +132,7 @@ export function AddAppointmentModal({
   const updateAppointment = useMutation(api.appointments.update);
   const deleteAppointment = useMutation(api.appointments.remove);
 
-  // Initialize form data when appointment changes (edit mode)
+  // Initialize form data when appointment changes (edit mode) or modal opens with defaultContactId
   useEffect(() => {
     if (appointment && open) {
       const appointmentDate = new Date(appointment.date);
@@ -144,8 +146,14 @@ export function AddAppointmentModal({
       });
       setCalendarDate(appointmentDate);
       setStep("view"); // Start with view mode when editing
+    } else if (open && defaultContactId && !appointment) {
+      // Pre-select contact when opening from contact page
+      setFormData(prev => ({
+        ...prev,
+        contactId: defaultContactId,
+      }));
     }
-  }, [appointment, open]);
+  }, [appointment, open, defaultContactId]);
 
   const resetForm = () => {
     setStep("details");

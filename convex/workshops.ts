@@ -173,6 +173,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
 
     // Build formatted location string from address parts
     let location = args.location;
@@ -187,13 +188,36 @@ export const create = mutation({
       location = parts.join(", ");
     }
 
-    return await ctx.db.insert("workshops", {
+    const workshopId = await ctx.db.insert("workshops", {
       ...args,
       location,
       currentCapacity: args.currentCapacity ?? 0,
       createdAt: now,
       updatedAt: now,
     });
+
+    // Auto-generate workshop tasks
+    const workshopTasks = [
+      { title: "Workshop Task 1", daysFromNow: 2 },
+      { title: "Workshop Task 2", daysFromNow: 7 },
+      { title: "Workshop Task 3", daysFromNow: 3 },
+    ];
+
+    await Promise.all(
+      workshopTasks.map((task) =>
+        ctx.db.insert("tasks", {
+          workshopId,
+          title: task.title,
+          dueDate: now + task.daysFromNow * DAY_MS,
+          status: "Pending",
+          completed: false,
+          createdAt: now,
+          updatedAt: now,
+        })
+      )
+    );
+
+    return workshopId;
   },
 });
 

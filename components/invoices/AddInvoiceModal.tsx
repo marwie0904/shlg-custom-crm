@@ -361,6 +361,61 @@ export function AddInvoiceModal({
         documentId,
       });
 
+      // Send invoice email if sending to Confido and contact has email
+      if (sendToConfido && selectedContact?.email) {
+        try {
+          // Convert PDF blob to base64 (browser-compatible)
+          const arrayBuffer = await pdfBlob.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          let binary = '';
+          for (let i = 0; i < uint8Array.length; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          const pdfBase64 = btoa(binary);
+
+          // Format due date for email
+          const formattedDueDate = dueDateTimestamp
+            ? new Date(dueDateTimestamp).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })
+            : 'Upon Receipt';
+
+          // Format amount for email
+          const formattedAmount = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+          }).format(total);
+
+          // Send invoice email via Make.com webhook
+          const emailResponse = await fetch('/api/invoice/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: selectedContact.email,
+              recipientName: contactName,
+              invoiceNumber,
+              amount: formattedAmount,
+              dueDate: formattedDueDate,
+              pdfBase64,
+              pdfFilename: filename,
+              type: 'unpaid',
+            }),
+          });
+
+          const emailResult = await emailResponse.json();
+          if (emailResult.success) {
+            console.log('✅ Invoice email sent successfully');
+          } else {
+            console.error('Failed to send invoice email:', emailResult.error);
+          }
+        } catch (emailError) {
+          console.error('Error sending invoice email:', emailError);
+          // Don't fail the entire operation if email fails
+        }
+      }
+
       // Set created invoice for success screen
       setCreatedInvoice({
         id: invoiceId,
