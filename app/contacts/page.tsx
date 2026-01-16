@@ -8,8 +8,25 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AddTaskModal, NewTaskData } from "@/components/tasks/AddTaskModal";
-import { Search, Plus, MoreHorizontal, CheckSquare } from "lucide-react";
+import { Search, Plus, MoreHorizontal, CheckSquare, Link2, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Relationship type colors
+const relationshipColors: Record<string, string> = {
+  Spouse: "bg-pink-100 text-pink-700 border-pink-200",
+  Child: "bg-blue-100 text-blue-700 border-blue-200",
+  Parent: "bg-purple-100 text-purple-700 border-purple-200",
+  Sibling: "bg-cyan-100 text-cyan-700 border-cyan-200",
+  Grandparent: "bg-amber-100 text-amber-700 border-amber-200",
+  Grandchild: "bg-teal-100 text-teal-700 border-teal-200",
+  Caregiver: "bg-green-100 text-green-700 border-green-200",
+  "Power of Attorney": "bg-orange-100 text-orange-700 border-orange-200",
+  Trustee: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  Beneficiary: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  Guardian: "bg-rose-100 text-rose-700 border-rose-200",
+  "Business Partner": "bg-slate-100 text-slate-700 border-slate-200",
+  Other: "bg-gray-100 text-gray-700 border-gray-200",
+};
 
 // Skeleton row component for loading state
 function ContactRowSkeleton() {
@@ -23,6 +40,9 @@ function ContactRowSkeleton() {
       </td>
       <td className="px-4 py-3">
         <Skeleton className="h-4 w-40" />
+      </td>
+      <td className="px-4 py-3">
+        <Skeleton className="h-4 w-32" />
       </td>
       <td className="px-4 py-3">
         <Skeleton className="h-4 w-36" />
@@ -84,7 +104,7 @@ export default function ContactsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
 
-  // Fetch contacts from Convex
+  // Fetch contacts with opportunities from Convex
   const contacts = useQuery(api.contacts.listWithOpportunities, {
     searchQuery: searchQuery || undefined,
     limit: 100,
@@ -149,6 +169,9 @@ export default function ContactsPage() {
                   Email
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
+                  Relationship
+                </th>
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
                   Opportunity
                 </th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
@@ -194,6 +217,39 @@ export default function ContactsPage() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {contact.email || "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {contact.primaryContactId && contact.relationshipType ? (
+                        <div className="flex items-center gap-1.5">
+                          <Link2 className="h-3.5 w-3.5 text-gray-400" />
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${
+                              relationshipColors[contact.relationshipType] || "bg-gray-50 text-gray-600"
+                            }`}
+                          >
+                            {contact.relationshipType}
+                          </Badge>
+                          <span
+                            className="text-xs text-blue-600 hover:underline cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/contacts/${contact.primaryContactId}`);
+                            }}
+                          >
+                            {contact.primaryContactName}
+                          </span>
+                        </div>
+                      ) : contact.subContacts && contact.subContacts.length > 0 ? (
+                        <div className="flex items-center gap-1.5">
+                          <Users className="h-3.5 w-3.5 text-gray-400" />
+                          <span className="text-xs text-gray-600">
+                            {contact.subContacts.length} linked
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {contact.opportunityTitle || "-"}

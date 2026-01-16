@@ -156,6 +156,10 @@ export default defineSchema({
     metaPsid: v.optional(v.string()), // Facebook Page-Scoped ID (for Messenger)
     metaIgsid: v.optional(v.string()), // Instagram-Scoped ID (for Instagram DMs)
 
+    // Contact Relationships (links contacts together)
+    primaryContactId: v.optional(v.id("contacts")), // Links sub-contact to their primary contact
+    relationshipType: v.optional(v.string()), // "Spouse", "Child", "Parent", "Sibling", "Grandparent", "Grandchild", "Caregiver", "Power of Attorney", "Trustee", "Beneficiary", "Guardian", "Business Partner", "Other"
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -168,7 +172,8 @@ export default defineSchema({
     .index("by_source", ["source"])
     .index("by_lastName", ["lastName"])
     .index("by_metaPsid", ["metaPsid"])
-    .index("by_metaIgsid", ["metaIgsid"]),
+    .index("by_metaIgsid", ["metaIgsid"])
+    .index("by_primaryContactId", ["primaryContactId"]),
 
   // ==========================================
   // PIPELINE STAGES
@@ -181,6 +186,22 @@ export default defineSchema({
   })
     .index("by_pipeline", ["pipeline"])
     .index("by_pipeline_order", ["pipeline", "order"]),
+
+  // ==========================================
+  // OPPORTUNITY CONTACTS (Related Contacts)
+  // ==========================================
+  opportunityContacts: defineTable({
+    opportunityId: v.id("opportunities"),
+    contactId: v.id("contacts"),
+    relationship: v.string(), // "Spouse", "Child", "Parent", "Sibling", "Attorney", "Trustee", "Beneficiary", "POA", "Other"
+    notes: v.optional(v.string()),
+
+    // Metadata
+    createdAt: v.number(),
+  })
+    .index("by_opportunityId", ["opportunityId"])
+    .index("by_contactId", ["contactId"])
+    .index("by_opportunityId_contactId", ["opportunityId", "contactId"]),
 
   // ==========================================
   // OPPORTUNITIES - Second Root Table
@@ -196,12 +217,27 @@ export default defineSchema({
     // Value
     estimatedValue: v.number(),
 
+    // Practice Area
+    practiceArea: v.optional(v.string()), // "Estate Planning", "PBTA", "Medicaid", "Deed", "Doc Review", etc.
+
+    // Source
+    source: v.optional(v.string()), // "Website", "Referral", "Workshop", "Social Media", "Messenger", "Instagram", etc.
+
+    // Responsible Attorney
+    responsibleAttorneyId: v.optional(v.id("users")),
+    responsibleAttorneyName: v.optional(v.string()),
+
     // Notes
     notes: v.optional(v.string()),
 
     // Calendar Appointment Reference
     calendarAppointmentDate: v.optional(v.number()),
     calendarAppointmentType: v.optional(v.string()),
+
+    // Did Not Hire Tracking
+    didNotHireAt: v.optional(v.number()), // Timestamp when marked as Did Not Hire
+    didNotHireReason: v.optional(v.string()), // Stage name/reason for Did Not Hire
+    didNotHirePoint: v.optional(v.string()), // Closure point: "pre_contact", "pre_intake", "pre_iv", "post_iv"
 
     // GHL Integration
     ghlOpportunityId: v.optional(v.string()),
@@ -213,6 +249,9 @@ export default defineSchema({
     .index("by_contactId", ["contactId"])
     .index("by_pipeline", ["pipelineId"])
     .index("by_stage", ["stageId"])
+    .index("by_practiceArea", ["practiceArea"])
+    .index("by_source", ["source"])
+    .index("by_responsibleAttorneyId", ["responsibleAttorneyId"])
     .index("by_ghlOpportunityId", ["ghlOpportunityId"])
     .index("by_createdAt", ["createdAt"]),
 
@@ -665,6 +704,9 @@ export default defineSchema({
     // Priority
     priority: v.optional(v.string()), // "Low", "Medium", "High", "Urgent"
 
+    // Attempt tracking
+    attempt: v.optional(v.number()), // Track attempt number (1, 2, 3, etc.)
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -748,4 +790,64 @@ export default defineSchema({
     .index("by_token", ["token"])
     .index("by_userId", ["userId"])
     .index("by_expiresAt", ["expiresAt"]),
+
+  // ==========================================
+  // META CONNECTIONS (Facebook/Instagram OAuth)
+  // ==========================================
+  metaConnections: defineTable({
+    // Who connected this
+    connectedByUserId: v.id("users"),
+    connectedByName: v.string(),
+
+    // OAuth tokens
+    userAccessToken: v.string(), // User's long-lived access token
+    userAccessTokenExpiresAt: v.optional(v.number()), // Expiry timestamp
+
+    // Facebook User Info
+    facebookUserId: v.string(),
+    facebookUserName: v.optional(v.string()),
+
+    // Status
+    status: v.string(), // "active", "expired", "revoked"
+
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_connectedByUserId", ["connectedByUserId"])
+    .index("by_facebookUserId", ["facebookUserId"])
+    .index("by_status", ["status"]),
+
+  // ==========================================
+  // META PAGES (Connected Facebook/Instagram Pages)
+  // ==========================================
+  metaPages: defineTable({
+    connectionId: v.id("metaConnections"),
+
+    // Page Info
+    pageId: v.string(),
+    pageName: v.string(),
+    pageAccessToken: v.string(), // Page-specific access token (never expires if user token is valid)
+
+    // Platform
+    platform: v.string(), // "facebook" | "instagram"
+
+    // Instagram-specific (if linked)
+    instagramBusinessAccountId: v.optional(v.string()),
+    instagramUsername: v.optional(v.string()),
+
+    // Webhook subscription status
+    webhookSubscribed: v.boolean(),
+
+    // Status
+    isActive: v.boolean(), // Whether this page is actively being used
+
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_connectionId", ["connectionId"])
+    .index("by_pageId", ["pageId"])
+    .index("by_platform", ["platform"])
+    .index("by_isActive", ["isActive"]),
 });

@@ -118,7 +118,11 @@ export const listWithOpportunities = query({
     // Create a map of stages by ID
     const stageMap = new Map(stages.map((s) => [s._id.toString(), s]));
 
-    // Enrich contacts with opportunity info
+    // Create a map of all contacts for relationship lookup
+    const allContacts = await ctx.db.query("contacts").collect();
+    const contactMap = new Map(allContacts.map((c) => [c._id.toString(), c]));
+
+    // Enrich contacts with opportunity info and relationship data
     return contacts.map((contact) => {
       // Find the first/primary opportunity for this contact
       const contactOpportunities = opportunities.filter(
@@ -135,10 +139,31 @@ export const listWithOpportunities = query({
         opportunityStage = stage?.name ?? null;
       }
 
+      // Get primary contact name if this is a sub-contact
+      let primaryContactName = null;
+      if (contact.primaryContactId) {
+        const primaryContact = contactMap.get(contact.primaryContactId.toString());
+        if (primaryContact) {
+          primaryContactName = `${primaryContact.firstName} ${primaryContact.lastName}`;
+        }
+      }
+
+      // Get sub-contacts if this is a primary contact
+      const subContacts = allContacts
+        .filter((c) => c.primaryContactId?.toString() === contact._id.toString())
+        .map((c) => ({
+          _id: c._id,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          relationshipType: c.relationshipType,
+        }));
+
       return {
         ...contact,
         opportunityTitle,
         opportunityStage,
+        primaryContactName,
+        subContacts,
       };
     });
   },
@@ -168,6 +193,51 @@ export const getWithRelated = query({
       })
     );
 
+    // Get messages for each conversation
+    const conversationsWithMessages = await Promise.all(
+      conversations.map(async (conv) => {
+        const messages = await ctx.db
+          .query("messages")
+          .withIndex("by_conversationId", (q) => q.eq("conversationId", conv._id))
+          .order("desc")
+          .take(50); // Last 50 messages per conversation
+        return {
+          ...conv,
+          messages: messages.reverse(), // Return in chronological order
+        };
+      })
+    );
+
+    // Get primary contact if this is a sub-contact
+    let primaryContact = null;
+    if (contact.primaryContactId) {
+      const primary = await ctx.db.get(contact.primaryContactId);
+      if (primary) {
+        primaryContact = {
+          _id: primary._id,
+          firstName: primary.firstName,
+          lastName: primary.lastName,
+          email: primary.email,
+          phone: primary.phone,
+        };
+      }
+    }
+
+    // Get related contacts (sub-contacts linked to this contact)
+    const relatedContacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_primaryContactId", (q) => q.eq("primaryContactId", args.id))
+      .collect();
+
+    const relatedContactsFormatted = relatedContacts.map((c) => ({
+      _id: c._id,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      email: c.email,
+      phone: c.phone,
+      relationshipType: c.relationshipType,
+    }));
+
     return {
       ...contact,
       opportunities,
@@ -175,7 +245,9 @@ export const getWithRelated = query({
       invoices,
       tasks,
       documents: documentsWithUrls,
-      conversations,
+      conversations: conversationsWithMessages,
+      primaryContact,
+      relatedContacts: relatedContactsFormatted,
     };
   },
 });
@@ -341,7 +413,7 @@ export const create = mutation({
           title: contactName,
           contactId: contactId,
           pipelineId: "Main Lead Flow",
-          stageId: freshLeadsStage._id,
+          stageId: freshLeadsStage._id.toString(), // Convert to string to match schema
           estimatedValue: 0,
           createdAt: now,
           updatedAt: now,
@@ -580,7 +652,7 @@ export const migrateContactsWithoutOpportunities = mutation({
         title: contactName,
         contactId: contact._id,
         pipelineId: "Main Lead Flow",
-        stageId: freshLeadsStage._id,
+        stageId: freshLeadsStage._id.toString(), // Convert to string to match schema
         estimatedValue: 0,
         createdAt: now,
         updatedAt: now,

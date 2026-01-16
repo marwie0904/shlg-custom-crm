@@ -36,6 +36,8 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
+  Link2,
+  Users,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ContactMessages } from "@/components/conversations/ContactMessages";
@@ -340,6 +342,22 @@ const sourceColors: Record<string, string> = {
   "Google Ads": "bg-red-500",
   "Social Media": "bg-pink-500",
   "Walk-in": "bg-gray-500",
+};
+
+const relationshipColors: Record<string, string> = {
+  Spouse: "bg-pink-100 text-pink-700 border-pink-200",
+  Child: "bg-blue-100 text-blue-700 border-blue-200",
+  Parent: "bg-purple-100 text-purple-700 border-purple-200",
+  Sibling: "bg-cyan-100 text-cyan-700 border-cyan-200",
+  Grandparent: "bg-amber-100 text-amber-700 border-amber-200",
+  Grandchild: "bg-teal-100 text-teal-700 border-teal-200",
+  Caregiver: "bg-green-100 text-green-700 border-green-200",
+  "Power of Attorney": "bg-orange-100 text-orange-700 border-orange-200",
+  Trustee: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  Beneficiary: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  Guardian: "bg-rose-100 text-rose-700 border-rose-200",
+  "Business Partner": "bg-slate-100 text-slate-700 border-slate-200",
+  Other: "bg-gray-100 text-gray-700 border-gray-200",
 };
 
 type TabType = "messages" | "tasks" | "documents";
@@ -657,6 +675,86 @@ export default function ContactDetailPage() {
                     {tag}
                   </Badge>
                 ))}
+              </div>
+            </CollapsibleSection>
+
+            {/* Related Contacts Section */}
+            <CollapsibleSection
+              title="Related Contacts"
+              isEmpty={!contactData.primaryContact && (!contactData.relatedContacts || contactData.relatedContacts.length === 0)}
+            >
+              <div className="space-y-3 pl-6">
+                {/* Show primary contact if this is a sub-contact */}
+                {contactData.primaryContact && contactData.relationshipType && (
+                  <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Link2 className="h-4 w-4 text-blue-500" />
+                      <span className="text-xs font-medium text-blue-600">Primary Contact</span>
+                    </div>
+                    <Link
+                      href={`/contacts/${contactData.primaryContact._id}`}
+                      className="flex items-center justify-between hover:bg-blue-100 rounded p-2 -m-2 transition-colors"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {contactData.primaryContact.firstName} {contactData.primaryContact.lastName}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs mt-1 ${
+                            relationshipColors[contactData.relationshipType] || "bg-gray-50 text-gray-600"
+                          }`}
+                        >
+                          {contactData.relationshipType}
+                        </Badge>
+                      </div>
+                      <ExternalLink className="h-4 w-4 text-gray-400" />
+                    </Link>
+                  </div>
+                )}
+
+                {/* Show related sub-contacts if this is a primary contact */}
+                {contactData.relatedContacts && contactData.relatedContacts.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="h-4 w-4 text-gray-400" />
+                      <span className="text-xs font-medium text-gray-500">
+                        Linked Contacts ({contactData.relatedContacts.length})
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {contactData.relatedContacts.map((relatedContact) => (
+                        <Link
+                          key={relatedContact._id}
+                          href={`/contacts/${relatedContact._id}`}
+                          className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-medium text-gray-600">
+                              {relatedContact.firstName?.[0]}{relatedContact.lastName?.[0]}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-gray-900">
+                                {relatedContact.firstName} {relatedContact.lastName}
+                              </p>
+                              {relatedContact.relationshipType && (
+                                <Badge
+                                  variant="outline"
+                                  className={`text-xs ${
+                                    relationshipColors[relatedContact.relationshipType] || "bg-gray-50 text-gray-600"
+                                  }`}
+                                >
+                                  {relatedContact.relationshipType}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <ExternalLink className="h-4 w-4 text-gray-400" />
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CollapsibleSection>
 
