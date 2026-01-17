@@ -523,9 +523,9 @@ export default function ConversationsPage() {
 
   // Filter to only show SMS and Email conversations
   const allConversations = USE_MOCK_DATA ? mockConversationsList : convexConversations;
-  const conversations = (allConversations || []).filter(
+  const conversations = ((allConversations || []).filter(
     (conv) => conv.source === "sms" || conv.source === "email"
-  );
+  )) as Conversation[];
 
   // Fetch selected conversation with messages (skip in mock mode)
   const convexSelectedConversation = useQuery(
