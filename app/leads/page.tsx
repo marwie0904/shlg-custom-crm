@@ -7,7 +7,8 @@ import { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Check, X, Phone, Mail, Clock, RotateCcw, Briefcase, Loader2 } from "lucide-react";
+import { Check, X, Phone, Mail, Clock, RotateCcw, Briefcase, Loader2, MessageSquare, Facebook, Instagram } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 // Source badge colors
@@ -35,6 +36,27 @@ function getSourceColor(source: string): string {
 
   // Default
   return "bg-gray-100 text-gray-700";
+}
+
+// Helper to check if source is from social media (Messenger/Instagram)
+function isSocialSource(source: string): boolean {
+  const lowerSource = source.toLowerCase();
+  return (
+    lowerSource === "messenger" ||
+    lowerSource === "instagram" ||
+    lowerSource.includes("facebook messenger") ||
+    lowerSource.includes("instagram dm") ||
+    lowerSource.includes("instagram direct")
+  );
+}
+
+// Get icon for social source
+function getSocialIcon(source: string) {
+  const lowerSource = source.toLowerCase();
+  if (lowerSource === "instagram" || lowerSource.includes("instagram")) {
+    return <Instagram className="h-4 w-4" />;
+  }
+  return <Facebook className="h-4 w-4" />;
 }
 
 function formatDate(timestamp: number): string {
@@ -106,6 +128,7 @@ function LeadCard({ lead, onAccept, onIgnore, onRestore, isIgnored, isLoading }:
     ? `${lead.contact.firstName} ${lead.contact.lastName}`
     : lead.title;
   const source = lead.source || lead.contact?.source || "Unknown";
+  const isSocial = isSocialSource(source);
 
   return (
     <div className="rounded-lg border bg-white shadow-sm">
@@ -118,6 +141,22 @@ function LeadCard({ lead, onAccept, onIgnore, onRestore, isIgnored, isLoading }:
           </span>
         </h3>
         <div className="flex gap-2">
+          {isSocial && (
+            <Link href="/conversations">
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  source.toLowerCase().includes("instagram")
+                    ? "text-pink-600 border-pink-200 hover:bg-pink-50 hover:text-pink-700"
+                    : "text-blue-600 border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                )}
+              >
+                {getSocialIcon(source)}
+                <span className="ml-1">View Conversation</span>
+              </Button>
+            </Link>
+          )}
           {isIgnored ? (
             <Button
               variant="outline"
