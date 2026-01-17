@@ -81,6 +81,20 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // Sync tag to existing opportunities
+      const opportunities = await convex.query(api.opportunities.getByContactId, {
+        contactId: existingContact._id,
+      });
+      for (const opp of opportunities) {
+        const oppTags = opp.tags || [];
+        if (!oppTags.includes("Contact Us")) {
+          await convex.mutation(api.opportunities.addTag, {
+            id: opp._id,
+            tag: "Contact Us",
+          });
+        }
+      }
+
       return NextResponse.json({
         success: true,
         contactId: existingContact._id,

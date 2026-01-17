@@ -10,14 +10,21 @@ export const list = query({
   args: {
     limit: v.optional(v.number()),
     cursor: v.optional(v.string()),
+    includeIgnored: v.optional(v.boolean()), // Set to true to include ignored contacts
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 50;
-    const contacts = await ctx.db
+    let contacts = await ctx.db
       .query("contacts")
       .order("desc")
-      .take(limit);
-    return contacts;
+      .take(limit * 2); // Fetch more to account for filtering
+
+    // Filter out ignored contacts unless explicitly requested
+    if (!args.includeIgnored) {
+      contacts = contacts.filter((c) => c.leadStatus !== "ignored");
+    }
+
+    return contacts.slice(0, limit);
   },
 });
 
@@ -90,13 +97,22 @@ export const listWithOpportunities = query({
   args: {
     limit: v.optional(v.number()),
     searchQuery: v.optional(v.string()),
+    includeIgnored: v.optional(v.boolean()), // Set to true to include ignored contacts
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 50;
     let contacts = await ctx.db
       .query("contacts")
       .order("desc")
-      .take(limit);
+      .take(limit * 2); // Fetch more to account for filtering
+
+    // Filter out ignored contacts unless explicitly requested
+    if (!args.includeIgnored) {
+      contacts = contacts.filter((c) => c.leadStatus !== "ignored");
+    }
+
+    // Trim to requested limit (before search filter, so search has enough results)
+    contacts = contacts.slice(0, limit);
 
     // Filter by search query if provided
     if (args.searchQuery) {
@@ -415,6 +431,8 @@ export const create = mutation({
           pipelineId: "Main Lead Flow",
           stageId: freshLeadsStage._id.toString(), // Convert to string to match schema
           estimatedValue: 0,
+          source: args.source, // Sync source from contact
+          tags: args.tags, // Sync tags from contact
           createdAt: now,
           updatedAt: now,
         });

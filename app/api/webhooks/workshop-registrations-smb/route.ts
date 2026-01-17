@@ -145,6 +145,20 @@ export async function POST(request: NextRequest) {
           tag: source,
         });
       }
+
+      // Sync tag to existing opportunities
+      const opportunities = await convex.query(api.opportunities.getByContactId, {
+        contactId: contactId,
+      });
+      for (const opp of opportunities) {
+        const oppTags = opp.tags || [];
+        if (!oppTags.includes(source)) {
+          await convex.mutation(api.opportunities.addTag, {
+            id: opp._id,
+            tag: source,
+          });
+        }
+      }
     } else {
       // Format phone number
       let formattedPhone = undefined;
