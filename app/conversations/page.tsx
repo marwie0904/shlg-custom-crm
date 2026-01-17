@@ -25,7 +25,10 @@ import {
   MoreVertical,
   Loader2,
   Facebook,
-  Instagram
+  Instagram,
+  Check,
+  X,
+  AlertCircle
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -47,15 +50,21 @@ interface Message {
   read: boolean;
 }
 
+interface PendingLead {
+  _id: Id<"opportunities">;
+  leadStatus?: string;
+}
+
 interface Conversation {
   _id: Id<"conversations">;
   contactId: Id<"contacts">;
-  source: string; // "sms" | "email"
+  source: string; // "sms" | "email" | "messenger" | "instagram"
   unreadCount: number;
   lastMessageAt: number;
   contact?: Contact | null;
   lastMessage?: Message | null;
   messages?: Message[];
+  pendingLead?: PendingLead | null;
 }
 
 // Avatar color generator
@@ -211,9 +220,17 @@ function ConversationList({
                 {/* Content */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900 truncate">
-                      {contact.firstName} {contact.lastName}
-                    </span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-medium text-gray-900 truncate">
+                        {contact.firstName} {contact.lastName}
+                      </span>
+                      {conversation.pendingLead && (
+                        <Badge className="shrink-0 bg-orange-100 text-orange-700 border-orange-200 text-[10px] px-1.5 py-0 h-5 hover:bg-orange-100">
+                          <AlertCircle className="size-3 mr-0.5" />
+                          Pending
+                        </Badge>
+                      )}
+                    </div>
                     <span className="shrink-0 text-xs text-gray-500">
                       {formatDistanceToNow(new Date(conversation.lastMessageAt), { addSuffix: true })}
                     </span>
@@ -274,10 +291,16 @@ function MessageWindow({
   conversation,
   onSendMessage,
   isSending,
+  onAcceptLead,
+  onIgnoreLead,
+  isProcessingLead,
 }: {
   conversation: Conversation | null;
   onSendMessage: (content: string) => void;
   isSending: boolean;
+  onAcceptLead?: () => void;
+  onIgnoreLead?: () => void;
+  isProcessingLead?: boolean;
 }) {
   const [message, setMessage] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -352,6 +375,12 @@ function MessageWindow({
                 {getSourceIcon(conversation.source, "size-3")}
                 {getSourceLabel(conversation.source)}
               </Badge>
+              {conversation.pendingLead && (
+                <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs hover:bg-orange-100">
+                  <AlertCircle className="size-3 mr-1" />
+                  Pending Lead
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-3 text-sm text-gray-500">
               {contact.phone && (
@@ -369,9 +398,42 @@ function MessageWindow({
             </div>
           </div>
         </div>
-        <Button variant="ghost" size="icon">
-          <MoreVertical className="size-5 text-gray-500" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {conversation.pendingLead && onAcceptLead && onIgnoreLead && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onIgnoreLead}
+                disabled={isProcessingLead}
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              >
+                {isProcessingLead ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <X className="size-4 mr-1" />
+                )}
+                Ignore
+              </Button>
+              <Button
+                size="sm"
+                onClick={onAcceptLead}
+                disabled={isProcessingLead}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {isProcessingLead ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Check className="size-4 mr-1" />
+                )}
+                Accept Lead
+              </Button>
+            </>
+          )}
+          <Button variant="ghost" size="icon">
+            <MoreVertical className="size-5 text-gray-500" />
+          </Button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -527,6 +589,7 @@ export default function ConversationsPage() {
   const [selectedConversationId, setSelectedConversationId] = useState<Id<"conversations"> | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isProcessingLead, setIsProcessingLead] = useState(false);
 
   // Mock data hooks
   const mockConversationsList = useMockConversations();
@@ -551,9 +614,49 @@ export default function ConversationsPage() {
 
   const selectedConversation = (USE_MOCK_DATA ? mockSelectedConversation : convexSelectedConversation) as Conversation | null | undefined;
 
+  // Fetch pending lead for selected conversation's contact
+  const pendingLead = useQuery(
+    api.opportunities.getPendingLeadByContactId,
+    USE_MOCK_DATA ? "skip" : (selectedConversation?.contactId ? { contactId: selectedConversation.contactId } : "skip")
+  );
+
+  // Add pending lead info to selected conversation
+  const selectedConversationWithLead = selectedConversation ? {
+    ...selectedConversation,
+    pendingLead: pendingLead || null,
+  } : null;
+
+  // Fetch pending leads for all conversation contacts (for list badges)
+  const allContactIds = conversations.map(c => c.contactId).filter(Boolean);
+  const pendingLeadsForList = useQuery(
+    api.opportunities.listPendingLeads,
+    USE_MOCK_DATA ? "skip" : {}
+  );
+
+  // Map pending leads by contactId for quick lookup
+  const pendingLeadsByContactId = new Map<string, PendingLead>();
+  if (pendingLeadsForList) {
+    for (const lead of pendingLeadsForList) {
+      if (lead.contactId) {
+        pendingLeadsByContactId.set(lead.contactId.toString(), {
+          _id: lead._id,
+          leadStatus: lead.leadStatus,
+        });
+      }
+    }
+  }
+
+  // Add pending lead info to conversations
+  const conversationsWithLeads = conversations.map(conv => ({
+    ...conv,
+    pendingLead: pendingLeadsByContactId.get(conv.contactId?.toString() || "") || null,
+  }));
+
   // Mutations (use mock in demo mode)
   const sendMessageMutation = useMutation(api.conversations.sendMessageWithMeta);
   const markAsReadMutation = useMutation(api.conversations.markAsRead);
+  const acceptLeadMutation = useMutation(api.opportunities.acceptLead);
+  const ignoreLeadMutation = useMutation(api.opportunities.ignoreLead);
   const sendMessage = USE_MOCK_DATA ? mockMutation : sendMessageMutation;
   const markAsRead = USE_MOCK_DATA ? mockMutation : markAsReadMutation;
 
@@ -584,12 +687,38 @@ export default function ConversationsPage() {
     }
   };
 
+  const handleAcceptLead = async () => {
+    if (!pendingLead?._id || isProcessingLead) return;
+
+    setIsProcessingLead(true);
+    try {
+      await acceptLeadMutation({ id: pendingLead._id });
+    } catch (error) {
+      console.error("Error accepting lead:", error);
+    } finally {
+      setIsProcessingLead(false);
+    }
+  };
+
+  const handleIgnoreLead = async () => {
+    if (!pendingLead?._id || isProcessingLead) return;
+
+    setIsProcessingLead(true);
+    try {
+      await ignoreLeadMutation({ id: pendingLead._id });
+    } catch (error) {
+      console.error("Error ignoring lead:", error);
+    } finally {
+      setIsProcessingLead(false);
+    }
+  };
+
   return (
     <div className="flex h-[calc(100vh-64px)] overflow-hidden -m-6">
       {/* Conversation List - Left Sidebar */}
       <div className="w-96 shrink-0">
         <ConversationList
-          conversations={conversations}
+          conversations={conversationsWithLeads}
           selectedId={selectedConversationId}
           onSelect={handleSelectConversation}
           searchQuery={searchQuery}
@@ -600,9 +729,12 @@ export default function ConversationsPage() {
       {/* Message Window - Right Side */}
       <div className="flex-1">
         <MessageWindow
-          conversation={selectedConversation || null}
+          conversation={selectedConversationWithLead}
           onSendMessage={handleSendMessage}
           isSending={isSending}
+          onAcceptLead={handleAcceptLead}
+          onIgnoreLead={handleIgnoreLead}
+          isProcessingLead={isProcessingLead}
         />
       </div>
     </div>

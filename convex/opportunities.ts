@@ -92,6 +92,24 @@ export const getByContactId = query({
   },
 });
 
+// Get pending lead opportunity for a contact (for Communications page)
+export const getPendingLeadByContactId = query({
+  args: { contactId: v.id("contacts") },
+  handler: async (ctx, args) => {
+    const opportunities = await ctx.db
+      .query("opportunities")
+      .withIndex("by_contactId", (q) => q.eq("contactId", args.contactId))
+      .collect();
+
+    // Find opportunity that is pending (leadStatus is undefined or "pending")
+    const pendingOpp = opportunities.find(
+      (o) => !o.leadStatus || o.leadStatus === "pending"
+    );
+
+    return pendingOpp || null;
+  },
+});
+
 export const getByGhlOpportunityId = query({
   args: { ghlOpportunityId: v.string() },
   handler: async (ctx, args) => {
