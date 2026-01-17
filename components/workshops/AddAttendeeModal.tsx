@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockContactSearch, useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import {
   Dialog,
   DialogContent,
@@ -31,14 +35,21 @@ export function AddAttendeeModal({
   const [searchQuery, setSearchQuery] = useState("");
   const [isAdding, setIsAdding] = useState<Id<"contacts"> | null>(null);
 
-  // Search contacts
-  const searchResults = useQuery(
-    api.contacts.search,
-    searchQuery.length >= 2 ? { query: searchQuery } : "skip"
+  // Use mock data or real Convex data based on environment
+  const mockSearchResults = useMockContactSearch(searchQuery.length >= 2 ? searchQuery : null);
+  const mockMutation = useMockMutation();
+
+  // Search contacts (skip in mock mode)
+  const convexSearchResults = useQuery(
+    USE_MOCK_DATA ? "skip" : api.contacts.search,
+    USE_MOCK_DATA ? "skip" : (searchQuery.length >= 2 ? { query: searchQuery } : "skip")
   );
 
-  // Register mutation
-  const registerContact = useMutation(api.workshops.register);
+  const searchResults = USE_MOCK_DATA ? mockSearchResults : convexSearchResults;
+
+  // Register mutation (use mock in demo mode)
+  const registerContactMutation = useMutation(api.workshops.register);
+  const registerContact = USE_MOCK_DATA ? mockMutation : registerContactMutation;
 
   // Reset search when modal closes
   useEffect(() => {

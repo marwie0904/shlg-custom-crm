@@ -4,6 +4,10 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockContacts, useMockOpportunities, useMockProducts, useMockNextInvoiceNumber, useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,18 +51,48 @@ export function AddInvoiceModal({
   defaultOpportunityId,
   onSuccess,
 }: AddInvoiceModalProps) {
-  // Queries
-  const contacts = useQuery(api.contacts.list, { limit: 100 });
-  const opportunities = useQuery(api.opportunities.list, { limit: 100 });
-  const products = useQuery(api.products.list, { activeOnly: true });
-  const nextInvoiceNumber = useQuery(api.invoices.getNextInvoiceNumber, {});
+  // Use mock data or real Convex data based on environment
+  const mockContacts = useMockContacts({ limit: 100 });
+  const mockOpportunities = useMockOpportunities({ limit: 100 });
+  const mockProducts = useMockProducts({ activeOnly: true });
+  const mockNextInvoiceNumber = useMockNextInvoiceNumber();
+  const mockMutation = useMockMutation();
 
-  // Mutations
-  const createInvoice = useMutation(api.invoices.create);
-  const updateConfidoInfo = useMutation(api.invoices.updateConfidoInfo);
-  const updateDocumentId = useMutation(api.invoices.updateDocumentId);
-  const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
-  const createDocumentForInvoice = useMutation(api.documents.createForInvoice);
+  // Queries (skip in mock mode)
+  const convexContacts = useQuery(
+    USE_MOCK_DATA ? "skip" : api.contacts.list,
+    USE_MOCK_DATA ? "skip" : { limit: 100 }
+  );
+  const convexOpportunities = useQuery(
+    USE_MOCK_DATA ? "skip" : api.opportunities.list,
+    USE_MOCK_DATA ? "skip" : { limit: 100 }
+  );
+  const convexProducts = useQuery(
+    USE_MOCK_DATA ? "skip" : api.products.list,
+    USE_MOCK_DATA ? "skip" : { activeOnly: true }
+  );
+  const convexNextInvoiceNumber = useQuery(
+    USE_MOCK_DATA ? "skip" : api.invoices.getNextInvoiceNumber,
+    USE_MOCK_DATA ? "skip" : {}
+  );
+
+  const contacts = USE_MOCK_DATA ? mockContacts : convexContacts;
+  const opportunities = USE_MOCK_DATA ? mockOpportunities : convexOpportunities;
+  const products = USE_MOCK_DATA ? mockProducts : convexProducts;
+  const nextInvoiceNumber = USE_MOCK_DATA ? mockNextInvoiceNumber : convexNextInvoiceNumber;
+
+  // Mutations (use mock in demo mode)
+  const createInvoiceMutation = useMutation(api.invoices.create);
+  const updateConfidoInfoMutation = useMutation(api.invoices.updateConfidoInfo);
+  const updateDocumentIdMutation = useMutation(api.invoices.updateDocumentId);
+  const generateUploadUrlMutation = useMutation(api.documents.generateUploadUrl);
+  const createDocumentForInvoiceMutation = useMutation(api.documents.createForInvoice);
+
+  const createInvoice = USE_MOCK_DATA ? mockMutation : createInvoiceMutation;
+  const updateConfidoInfo = USE_MOCK_DATA ? mockMutation : updateConfidoInfoMutation;
+  const updateDocumentId = USE_MOCK_DATA ? mockMutation : updateDocumentIdMutation;
+  const generateUploadUrl = USE_MOCK_DATA ? mockMutation : generateUploadUrlMutation;
+  const createDocumentForInvoice = USE_MOCK_DATA ? mockMutation : createDocumentForInvoiceMutation;
 
   // Form state
   const [contactId, setContactId] = useState<string>(defaultContactId || "");

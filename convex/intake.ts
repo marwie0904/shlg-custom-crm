@@ -330,3 +330,495 @@ export const remove = mutation({
     return args.id;
   },
 });
+
+// ==========================================
+// LEAD MANAGEMENT
+// ==========================================
+
+// List pending leads (intakes that haven't been accepted or ignored)
+export const listPendingLeads = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 100;
+
+    // Get all intakes and filter for pending (undefined or "pending")
+    const intakes = await ctx.db
+      .query("intake")
+      .order("desc")
+      .take(limit * 3); // Fetch more to account for filtering
+
+    // Filter for pending leads (leadStatus is undefined or "pending", excluding duplicates)
+    const pendingIntakes = intakes
+      .filter((i) => (!i.leadStatus || i.leadStatus === "pending") && i.leadStatus !== "duplicate")
+      .slice(0, limit);
+
+    return pendingIntakes;
+  },
+});
+
+// List ignored leads
+export const listIgnoredLeads = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 100;
+
+    const intakes = await ctx.db
+      .query("intake")
+      .order("desc")
+      .take(limit * 3);
+
+    const ignoredIntakes = intakes
+      .filter((i) => i.leadStatus === "ignored")
+      .slice(0, limit);
+
+    return ignoredIntakes;
+  },
+});
+
+// Accept a lead - creates contact and opportunity
+export const acceptLead = mutation({
+  args: {
+    id: v.id("intake"),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    const now = Date.now();
+
+    // Create contact from intake data
+    const contactId = await ctx.db.insert("contacts", {
+      firstName: intake.firstName,
+      lastName: intake.lastName,
+      middleName: intake.middleName,
+      email: intake.email,
+      phone: intake.phone,
+      streetAddress: intake.streetAddress,
+      streetAddress2: intake.streetAddress2,
+      city: intake.city,
+      state: intake.state,
+      zipCode: intake.zipCode,
+      country: intake.country,
+      source: "Intake Form",
+      tags: intake.practiceArea ? [intake.practiceArea] : [],
+      notes: intake.callDetails,
+      intakeId: args.id,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Get pipeline stages for Main Lead Flow
+    const stages = await ctx.db
+      .query("pipelineStages")
+      .withIndex("by_pipeline", (q) => q.eq("pipeline", "Main Lead Flow"))
+      .collect();
+
+    const sortedStages = stages.sort((a, b) => a.order - b.order);
+    const firstStage = sortedStages[0];
+
+    if (!firstStage) {
+      throw new Error("No pipeline stages found. Please seed default stages first.");
+    }
+
+    // Count existing opportunities for numbering
+    const allOpportunities = await ctx.db.query("opportunities").collect();
+    const opportunityNumber = allOpportunities.length + 1;
+
+    // Create opportunity
+    const contactFullName = `${intake.firstName} ${intake.lastName}`.trim();
+    const title = `${opportunityNumber} - ${contactFullName}`;
+
+    const opportunityId = await ctx.db.insert("opportunities", {
+      title,
+      contactId,
+      pipelineId: "Main Lead Flow",
+      stageId: firstStage._id.toString(),
+      estimatedValue: 0,
+      practiceArea: intake.practiceArea,
+      source: "Intake Form",
+      notes: intake.callDetails,
+      leadStatus: "accepted",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Link appointment to contact and opportunity if exists
+    if (intake.appointmentId) {
+      await ctx.db.patch(intake.appointmentId, {
+        contactId,
+        opportunityId,
+        updatedAt: now,
+      });
+    }
+
+    // Update intake with links and status
+    await ctx.db.patch(args.id, {
+      leadStatus: "accepted",
+      contactId,
+      opportunityId,
+      updatedAt: now,
+    });
+
+    return {
+      intakeId: args.id,
+      contactId,
+      opportunityId,
+    };
+  },
+});
+
+// Ignore a lead
+export const ignoreLead = mutation({
+  args: {
+    id: v.id("intake"),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    await ctx.db.patch(args.id, {
+      leadStatus: "ignored",
+      updatedAt: Date.now(),
+    });
+
+    return args.id;
+  },
+});
+
+// Restore an ignored lead back to pending
+export const restoreLead = mutation({
+  args: {
+    id: v.id("intake"),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    await ctx.db.patch(args.id, {
+      leadStatus: "pending",
+      updatedAt: Date.now(),
+    });
+
+    return args.id;
+  },
+});
+
+// ==========================================
+// DUPLICATE LEADS MANAGEMENT
+// ==========================================
+
+// List duplicate leads
+export const listDuplicateLeads = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 100;
+
+    // Get duplicate intakes
+    const intakes = await ctx.db
+      .query("intake")
+      .withIndex("by_leadStatus", (q) => q.eq("leadStatus", "duplicate"))
+      .order("desc")
+      .take(limit);
+
+    // Fetch duplicate contact data for each intake
+    const intakesWithDetails = await Promise.all(
+      intakes.map(async (intake) => {
+        let duplicateContact = null;
+        let duplicateOpportunity = null;
+
+        if (intake.duplicateOfContactId) {
+          duplicateContact = await ctx.db.get(intake.duplicateOfContactId);
+
+          // Get the most recent opportunity for the duplicate contact
+          if (duplicateContact) {
+            const duplicateOpp = await ctx.db
+              .query("opportunities")
+              .withIndex("by_contactId", (q) => q.eq("contactId", intake.duplicateOfContactId!))
+              .order("desc")
+              .first();
+            duplicateOpportunity = duplicateOpp;
+          }
+        }
+
+        return {
+          ...intake,
+          duplicateContact: duplicateContact
+            ? {
+                _id: duplicateContact._id,
+                firstName: duplicateContact.firstName,
+                lastName: duplicateContact.lastName,
+                email: duplicateContact.email,
+                phone: duplicateContact.phone,
+              }
+            : null,
+          duplicateOpportunity: duplicateOpportunity
+            ? {
+                _id: duplicateOpportunity._id,
+                title: duplicateOpportunity.title,
+                stageId: duplicateOpportunity.stageId,
+                practiceArea: duplicateOpportunity.practiceArea,
+                createdAt: duplicateOpportunity.createdAt,
+              }
+            : null,
+        };
+      })
+    );
+
+    return intakesWithDetails;
+  },
+});
+
+// Remove a duplicate lead (delete intake)
+export const removeDuplicateLead = mutation({
+  args: {
+    id: v.id("intake"),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    await ctx.db.delete(args.id);
+
+    return { success: true };
+  },
+});
+
+// Update email of a duplicate lead
+export const updateDuplicateEmail = mutation({
+  args: {
+    id: v.id("intake"),
+    newEmail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    const now = Date.now();
+
+    // Update the intake's email
+    await ctx.db.patch(args.id, {
+      email: args.newEmail,
+      updatedAt: now,
+    });
+
+    // Re-check for duplicates with the new email
+    let hasDuplicate = false;
+    let matchType: "email" | "phone" | "both" | undefined = undefined;
+    let duplicateContactId = null;
+
+    // Check if new email matches an existing contact
+    const emailMatch = await ctx.db
+      .query("contacts")
+      .withIndex("by_email", (q) => q.eq("email", args.newEmail))
+      .first();
+
+    if (emailMatch) {
+      hasDuplicate = true;
+      matchType = "email";
+      duplicateContactId = emailMatch._id;
+
+      // Also check phone
+      if (intake.phone) {
+        const phoneMatch = await ctx.db
+          .query("contacts")
+          .withIndex("by_phone", (q) => q.eq("phone", intake.phone))
+          .first();
+        if (phoneMatch && phoneMatch._id === emailMatch._id) {
+          matchType = "both";
+        }
+      }
+    }
+
+    if (hasDuplicate && duplicateContactId) {
+      // Still a duplicate with new email
+      await ctx.db.patch(args.id, {
+        duplicateOfContactId: duplicateContactId,
+        duplicateMatchType: matchType,
+        updatedAt: now,
+      });
+    } else {
+      // No longer a duplicate - move to pending
+      await ctx.db.patch(args.id, {
+        leadStatus: "pending",
+        duplicateOfContactId: undefined,
+        duplicateMatchType: undefined,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, stillDuplicate: hasDuplicate };
+  },
+});
+
+// Update phone of a duplicate lead
+export const updateDuplicatePhone = mutation({
+  args: {
+    id: v.id("intake"),
+    newPhone: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    const now = Date.now();
+
+    // Update the intake's phone
+    await ctx.db.patch(args.id, {
+      phone: args.newPhone,
+      updatedAt: now,
+    });
+
+    // Re-check for duplicates with the new phone
+    let hasDuplicate = false;
+    let matchType: "email" | "phone" | "both" | undefined = undefined;
+    let duplicateContactId = null;
+
+    // Check if new phone matches an existing contact
+    const phoneMatch = await ctx.db
+      .query("contacts")
+      .withIndex("by_phone", (q) => q.eq("phone", args.newPhone))
+      .first();
+
+    if (phoneMatch) {
+      hasDuplicate = true;
+      matchType = "phone";
+      duplicateContactId = phoneMatch._id;
+
+      // Also check email
+      if (intake.email) {
+        const emailMatch = await ctx.db
+          .query("contacts")
+          .withIndex("by_email", (q) => q.eq("email", intake.email))
+          .first();
+        if (emailMatch && emailMatch._id === phoneMatch._id) {
+          matchType = "both";
+        }
+      }
+    }
+
+    if (hasDuplicate && duplicateContactId) {
+      // Still a duplicate with new phone
+      await ctx.db.patch(args.id, {
+        duplicateOfContactId: duplicateContactId,
+        duplicateMatchType: matchType,
+        updatedAt: now,
+      });
+    } else {
+      // No longer a duplicate - move to pending
+      await ctx.db.patch(args.id, {
+        leadStatus: "pending",
+        duplicateOfContactId: undefined,
+        duplicateMatchType: undefined,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true, stillDuplicate: hasDuplicate };
+  },
+});
+
+// Create as new lead - removes duplicate status
+export const createAsNewLead = mutation({
+  args: {
+    id: v.id("intake"),
+  },
+  handler: async (ctx, args) => {
+    const intake = await ctx.db.get(args.id);
+    if (!intake) throw new Error("Intake not found");
+
+    const now = Date.now();
+
+    // Clear duplicate fields and set to pending
+    await ctx.db.patch(args.id, {
+      leadStatus: "pending",
+      duplicateOfContactId: undefined,
+      duplicateMatchType: undefined,
+      updatedAt: now,
+    });
+
+    return { success: true, intakeId: args.id };
+  },
+});
+
+// Scan and detect duplicates for all pending intakes
+export const scanForDuplicates = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+
+    // Get all pending intakes
+    const pendingIntakes = await ctx.db
+      .query("intake")
+      .order("desc")
+      .take(500);
+
+    const filteredIntakes = pendingIntakes.filter(
+      (i) => !i.leadStatus || i.leadStatus === "pending"
+    );
+
+    let duplicatesFound = 0;
+
+    for (const intake of filteredIntakes) {
+      let matchingContact = null;
+      let matchType: "email" | "phone" | "both" | undefined = undefined;
+      let emailMatch = false;
+      let phoneMatch = false;
+
+      // Check by email
+      if (intake.email) {
+        const emailContact = await ctx.db
+          .query("contacts")
+          .withIndex("by_email", (q) => q.eq("email", intake.email))
+          .first();
+        if (emailContact) {
+          matchingContact = emailContact;
+          emailMatch = true;
+        }
+      }
+
+      // Check by phone
+      if (intake.phone) {
+        const phoneContact = await ctx.db
+          .query("contacts")
+          .withIndex("by_phone", (q) => q.eq("phone", intake.phone))
+          .first();
+        if (phoneContact) {
+          if (matchingContact && matchingContact._id === phoneContact._id) {
+            phoneMatch = true;
+          } else if (!matchingContact) {
+            matchingContact = phoneContact;
+            phoneMatch = true;
+          }
+        }
+      }
+
+      if (matchingContact) {
+        if (emailMatch && phoneMatch) {
+          matchType = "both";
+        } else if (emailMatch) {
+          matchType = "email";
+        } else if (phoneMatch) {
+          matchType = "phone";
+        }
+
+        // Mark as duplicate
+        await ctx.db.patch(intake._id, {
+          leadStatus: "duplicate",
+          duplicateOfContactId: matchingContact._id,
+          duplicateMatchType: matchType,
+          updatedAt: now,
+        });
+
+        duplicatesFound++;
+      }
+    }
+
+    return { success: true, duplicatesFound };
+  },
+});

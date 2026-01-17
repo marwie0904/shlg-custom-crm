@@ -40,6 +40,37 @@ export const getByPipeline = query({
   },
 });
 
+// Get all unique pipeline names
+export const listPipelines = query({
+  args: {},
+  handler: async (ctx) => {
+    const allStages = await ctx.db.query("pipelineStages").collect();
+    const pipelineNames = [...new Set(allStages.map((stage) => stage.pipeline))];
+
+    // Return pipeline info with stage counts
+    return pipelineNames.map((name) => ({
+      name,
+      stageCount: allStages.filter((s) => s.pipeline === name).length,
+    }));
+  },
+});
+
+// Get all stages grouped by pipeline
+export const listAllGrouped = query({
+  args: {},
+  handler: async (ctx) => {
+    const allStages = await ctx.db.query("pipelineStages").collect();
+    const pipelineNames = [...new Set(allStages.map((stage) => stage.pipeline))];
+
+    return pipelineNames.map((name) => ({
+      name,
+      stages: allStages
+        .filter((s) => s.pipeline === name)
+        .sort((a, b) => a.order - b.order),
+    }));
+  },
+});
+
 // ==========================================
 // MUTATIONS
 // ==========================================

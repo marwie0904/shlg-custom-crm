@@ -15,6 +15,10 @@ import {
   Plus,
   Loader2,
 } from "lucide-react";
+import { useMockAppointments } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 type ViewType = "month" | "week" | "3day";
 type DisplayMode = "calendar" | "list";
@@ -55,8 +59,14 @@ export default function CalendarsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentData | null>(null);
 
-  // Fetch appointments from Convex
-  const rawAppointments = useQuery(api.appointments.list, { limit: 500 });
+  // Use mock data or real Convex data based on environment
+  const mockAppointments = useMockAppointments({ limit: 500 });
+  const convexAppointments = useQuery(
+    USE_MOCK_DATA ? "skip" : api.appointments.list,
+    USE_MOCK_DATA ? "skip" : { limit: 500 }
+  );
+
+  const rawAppointments = USE_MOCK_DATA ? mockAppointments : convexAppointments;
 
   // Transform appointments to include contact name
   const appointments: CalendarAppointment[] = (rawAppointments || []).map((apt) => ({
@@ -485,8 +495,8 @@ export default function CalendarsPage() {
     </div>
   );
 
-  // Loading state
-  if (rawAppointments === undefined) {
+  // Loading state (never loading in mock mode)
+  if (!USE_MOCK_DATA && rawAppointments === undefined) {
     return <CalendarSkeleton />;
   }
 

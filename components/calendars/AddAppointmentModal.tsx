@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockUsers, useMockContacts, useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +71,8 @@ interface AddAppointmentModalProps {
   onOpenChange: (open: boolean) => void;
   appointment?: AppointmentData | null; // If provided, modal is in edit mode
   defaultContactId?: Id<"contacts">; // Pre-select contact when creating from contact page
+  defaultContactName?: string; // Display name for pre-selected contact
+  onAppointmentCreated?: () => void; // Callback when appointment is successfully created
 }
 
 interface AppointmentFormData {
@@ -104,6 +110,8 @@ export function AddAppointmentModal({
   onOpenChange,
   appointment,
   defaultContactId,
+  defaultContactName,
+  onAppointmentCreated,
 }: AddAppointmentModalProps) {
   const isEditMode = !!appointment;
 
@@ -123,14 +131,32 @@ export function AddAppointmentModal({
     time: null,
   });
 
-  // Fetch users and contacts from Convex
-  const users = useQuery(api.users.list);
-  const contacts = useQuery(api.contacts.list, { limit: 100 });
+  // Use mock data or real Convex data based on environment
+  const mockUsers = useMockUsers();
+  const mockContacts = useMockContacts({ limit: 100 });
+  const mockMutation = useMockMutation();
 
-  // Mutations
-  const createAppointment = useMutation(api.appointments.create);
-  const updateAppointment = useMutation(api.appointments.update);
-  const deleteAppointment = useMutation(api.appointments.remove);
+  // Fetch users and contacts from Convex (skip in mock mode)
+  const convexUsers = useQuery(
+    USE_MOCK_DATA ? "skip" : api.users.list,
+    USE_MOCK_DATA ? "skip" : undefined
+  );
+  const convexContacts = useQuery(
+    USE_MOCK_DATA ? "skip" : api.contacts.list,
+    USE_MOCK_DATA ? "skip" : { limit: 100 }
+  );
+
+  const users = USE_MOCK_DATA ? mockUsers : convexUsers;
+  const contacts = USE_MOCK_DATA ? mockContacts : convexContacts;
+
+  // Mutations (use mock in demo mode)
+  const createAppointmentMutation = useMutation(api.appointments.create);
+  const updateAppointmentMutation = useMutation(api.appointments.update);
+  const deleteAppointmentMutation = useMutation(api.appointments.remove);
+
+  const createAppointment = USE_MOCK_DATA ? mockMutation : createAppointmentMutation;
+  const updateAppointment = USE_MOCK_DATA ? mockMutation : updateAppointmentMutation;
+  const deleteAppointment = USE_MOCK_DATA ? mockMutation : deleteAppointmentMutation;
 
   // Initialize form data when appointment changes (edit mode) or modal opens with defaultContactId
   useEffect(() => {
@@ -276,6 +302,11 @@ export function AddAppointmentModal({
             // Don't fail the entire operation if email fails
           }
         }
+      }
+
+      // Call the callback before closing if provided
+      if (onAppointmentCreated && !isEditMode) {
+        onAppointmentCreated();
       }
 
       handleClose();

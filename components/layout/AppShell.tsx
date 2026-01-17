@@ -5,9 +5,10 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { Loader2 } from "lucide-react";
+import { PhoneProvider } from "@/components/phone";
 
 // Routes that should not show the sidebar/header (auth routes and public routes)
-const PUBLIC_ROUTES = ["/login", "/change-password", "/verify", "/verify-pending", "/invoice/"];
+const PUBLIC_ROUTES = ["/login", "/change-password", "/verify", "/verify-pending", "/invoice/", "/portal"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -33,15 +34,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // For protected routes, show sidebar/header if user is authenticated and verified
   if (user && user.emailVerified && !user.mustChangePassword) {
     return (
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Header />
-          <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
-            {children}
-          </main>
+      <PhoneProvider autoInitialize>
+        <div className="flex h-screen overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <Header />
+            <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </PhoneProvider>
     );
   }
 

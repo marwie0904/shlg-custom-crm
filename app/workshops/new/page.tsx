@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -70,10 +74,15 @@ export default function NewWorkshopPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const totalSteps = 5;
 
-  // Convex mutations
-  const createWorkshop = useMutation(api.workshops.create);
-  const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
-  const createDocument = useMutation(api.documents.createForWorkshop);
+  // Convex mutations (use mock in demo mode)
+  const mockMutation = useMockMutation();
+  const createWorkshopMutation = useMutation(api.workshops.create);
+  const generateUploadUrlMutation = useMutation(api.documents.generateUploadUrl);
+  const createDocumentMutation = useMutation(api.documents.createForWorkshop);
+
+  const createWorkshop = USE_MOCK_DATA ? mockMutation : createWorkshopMutation;
+  const generateUploadUrl = USE_MOCK_DATA ? mockMutation : generateUploadUrlMutation;
+  const createDocument = USE_MOCK_DATA ? mockMutation : createDocumentMutation;
 
   const updateFormData = (field: keyof WorkshopFormData, value: string | File[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));

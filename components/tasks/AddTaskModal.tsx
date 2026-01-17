@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockContacts, useMockOpportunities } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,15 +68,22 @@ export function AddTaskModal({
   hideLinkedFields = false,
   defaultContactOpportunity = "",
 }: AddTaskModalProps) {
-  // Only fetch contacts and opportunities if we need to show the dropdowns
-  const contacts = useQuery(
-    api.contacts.list,
-    hideLinkedFields ? "skip" : { limit: 100 }
+  // Use mock data or real Convex data based on environment
+  const mockContacts = useMockContacts({ limit: 100 });
+  const mockOpportunities = useMockOpportunities({ limit: 100 });
+
+  // Only fetch contacts and opportunities if we need to show the dropdowns (skip in mock mode)
+  const convexContacts = useQuery(
+    USE_MOCK_DATA ? "skip" : api.contacts.list,
+    USE_MOCK_DATA ? "skip" : (hideLinkedFields ? "skip" : { limit: 100 })
   );
-  const opportunities = useQuery(
-    api.opportunities.list,
-    hideLinkedFields ? "skip" : { limit: 100 }
+  const convexOpportunities = useQuery(
+    USE_MOCK_DATA ? "skip" : api.opportunities.list,
+    USE_MOCK_DATA ? "skip" : (hideLinkedFields ? "skip" : { limit: 100 })
   );
+
+  const contacts = USE_MOCK_DATA ? (hideLinkedFields ? undefined : mockContacts) : convexContacts;
+  const opportunities = USE_MOCK_DATA ? (hideLinkedFields ? undefined : mockOpportunities) : convexOpportunities;
 
   const [newTask, setNewTask] = useState({
     title: "",

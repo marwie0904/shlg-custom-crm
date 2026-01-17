@@ -243,6 +243,7 @@ export const create = mutation({
     assignedToName: v.optional(v.string()),
     status: v.optional(v.string()),
     priority: v.optional(v.string()),
+    attempt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -266,6 +267,7 @@ export const update = mutation({
     assignedToName: v.optional(v.string()),
     status: v.optional(v.string()),
     priority: v.optional(v.string()),
+    attempt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { id, ...updates } = args;

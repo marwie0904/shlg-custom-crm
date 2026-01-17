@@ -40,10 +40,8 @@ import {
   getMissingFields,
   type IntakeFormData,
 } from '@/lib/intake-constants'
-import { mapIntakeToContact, hasContactInfo } from '@/lib/services/contactService'
 import { generateIntakePdf, generateIntakePdfFilename, downloadIntakePdf } from '@/lib/services/pdfService'
-import { AlertCircle, CheckCircle2, ArrowLeft, User, Calendar, ExternalLink, Briefcase, Download } from 'lucide-react'
-import { Id } from '@/convex/_generated/dataModel'
+import { AlertCircle, CheckCircle2, ArrowLeft, Calendar, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
 
@@ -62,8 +60,6 @@ function SectionDivider({ title }: { title: string }) {
 interface SuccessData {
   intakeId: string
   appointmentId?: string
-  contactId?: string
-  opportunityId?: string
   // For PDF download
   formData: IntakeFormData
   appointmentInfo?: {
@@ -80,16 +76,7 @@ export default function NewIntakePage() {
   const router = useRouter()
   const createIntake = useMutation(api.intake.create)
   const createAppointment = useMutation(api.appointments.create)
-  const createContact = useMutation(api.contacts.create)
-  const createOpportunity = useMutation(api.opportunities.createFromIntake)
   const linkIntakeToAppointment = useMutation(api.intake.linkToAppointment)
-  const linkIntakeToContact = useMutation(api.intake.linkToContact)
-  const linkIntakeToOpportunity = useMutation(api.intake.linkToOpportunity)
-  const linkAppointmentToContact = useMutation(api.appointments.linkToContact)
-  const linkAppointmentToOpportunity = useMutation(api.appointments.linkToOpportunity)
-  const createDocumentForIntake = useMutation(api.documents.createForIntake)
-  const linkDocumentToContact = useMutation(api.documents.linkToContact)
-  const linkDocumentToOpportunity = useMutation(api.documents.linkToOpportunity)
 
   const [formData, setFormData] = useState<IntakeFormData>(initialFormData)
   const [submitting, setSubmitting] = useState(false)
@@ -309,187 +296,32 @@ export default function NewIntakePage() {
         })
       }
 
-      // Step 3: Create contact if we have contact info (email or phone)
-      let contactId = null
-      if (hasContactInfo(formData.email, formData.phone)) {
-        // Map intake data to contact data using the service
-        const contactData = mapIntakeToContact(formData, {
-          source: 'Intake Form',
-          tags: [formData.practiceArea].filter(Boolean),
-        })
+      // Prepare appointment info for success popup
+      const appointmentInfoForPdf = selectedTime && selectedDate && selectedStaff ? {
+        staffName: selectedStaff.name,
+        meetingType: meetingType,
+        location: meetingLocation === 'naples' ? 'Naples' :
+          meetingLocation === 'bonita' ? 'Bonita Springs' :
+          meetingLocation === 'zoom' ? 'Zoom' :
+          meetingLocation === 'phone' ? 'Phone Call' : meetingLocation,
+        date: new Date(selectedDate).toLocaleDateString('en-US', {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+        }),
+        time: selectedTime,
+      } : undefined
 
-        contactId = await createContact({
-          ...contactData,
-          intakeId: intakeId, // Link contact to the intake that created it
-        })
-
-        // Link intake to contact
-        await linkIntakeToContact({
-          id: intakeId,
-          contactId: contactId,
-        })
-
-        // Link appointment to contact (if appointment was created)
-        if (appointmentId) {
-          await linkAppointmentToContact({
-            id: appointmentId,
-            contactId: contactId,
-          })
-        }
-
-        // Step 4: Create opportunity
-        const contactFullName = `${formData.firstName || 'Unknown'} ${formData.lastName || 'Unknown'}`.trim()
-        const opportunityId = await createOpportunity({
-          contactId: contactId,
-          contactFullName: contactFullName,
-          appointmentDate: selectedDate || undefined,
-          appointmentType: meetingType || undefined,
-        })
-
-        // Link opportunity to intake
-        await linkIntakeToOpportunity({
-          id: intakeId,
-          opportunityId: opportunityId,
-        })
-
-        // Link opportunity to appointment (if appointment was created)
-        if (appointmentId) {
-          await linkAppointmentToOpportunity({
-            id: appointmentId,
-            opportunityId: opportunityId,
-          })
-        }
-
-        // Prepare appointment info for PDF
-        const appointmentInfoForPdf = selectedTime && selectedDate && selectedStaff ? {
-          staffName: selectedStaff.name,
-          meetingType: meetingType,
-          location: meetingLocation === 'naples' ? 'Naples' :
-            meetingLocation === 'bonita' ? 'Bonita Springs' :
-            meetingLocation === 'zoom' ? 'Zoom' :
-            meetingLocation === 'phone' ? 'Phone Call' : meetingLocation,
-          date: new Date(selectedDate).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-          time: selectedTime,
-        } : undefined
-
-        // Auto-generate and upload PDF if form is complete
-        if (status === 'complete') {
-          try {
-            const pdfBlob = generateIntakePdf(formData, appointmentInfoForPdf)
-            const pdfFilename = generateIntakePdfFilename(formData)
-
-            // Upload PDF to Convex storage
-            const generateUploadUrl = await fetch('/api/documents/upload-url', { method: 'POST' })
-            if (generateUploadUrl.ok) {
-              const { uploadUrl } = await generateUploadUrl.json()
-              const uploadResponse = await fetch(uploadUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/pdf' },
-                body: pdfBlob,
-              })
-
-              if (uploadResponse.ok) {
-                const { storageId } = await uploadResponse.json()
-
-                // Create document record for the PDF
-                const pdfDocId = await createDocumentForIntake({
-                  intakeId,
-                  name: pdfFilename,
-                  type: 'pdf',
-                  mimeType: 'application/pdf',
-                  size: pdfBlob.size,
-                  storageId: storageId as Id<"_storage">,
-                })
-
-                // Link PDF to contact and opportunity
-                await linkDocumentToContact({ id: pdfDocId, contactId: contactId })
-                await linkDocumentToOpportunity({ id: pdfDocId, opportunityId: opportunityId })
-              }
-            }
-          } catch (pdfError) {
-            console.error('Failed to auto-generate PDF:', pdfError)
-            // Don't fail the submission if PDF generation fails
-          }
-        }
-
-        // Show success with opportunity
-        setSuccessData({
-          intakeId: intakeId,
-          appointmentId: appointmentId ? String(appointmentId) : undefined,
-          contactId: contactId ? String(contactId) : undefined,
-          opportunityId: opportunityId ? String(opportunityId) : undefined,
-          formData: { ...formData },
-          appointmentInfo: appointmentInfoForPdf,
-          isFormComplete: status === 'complete',
-        })
-        setShowSuccessPopup(true)
-      } else {
-        // Prepare appointment info for PDF (even without contact)
-        const appointmentInfoForPdf = selectedTime && selectedDate && selectedStaff ? {
-          staffName: selectedStaff.name,
-          meetingType: meetingType,
-          location: meetingLocation === 'naples' ? 'Naples' :
-            meetingLocation === 'bonita' ? 'Bonita Springs' :
-            meetingLocation === 'zoom' ? 'Zoom' :
-            meetingLocation === 'phone' ? 'Phone Call' : meetingLocation,
-          date: new Date(selectedDate).toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          }),
-          time: selectedTime,
-        } : undefined
-
-        // Auto-generate and upload PDF if form is complete (even without contact)
-        if (status === 'complete') {
-          try {
-            const pdfBlob = generateIntakePdf(formData, appointmentInfoForPdf)
-            const pdfFilename = generateIntakePdfFilename(formData)
-
-            const generateUploadUrl = await fetch('/api/documents/upload-url', { method: 'POST' })
-            if (generateUploadUrl.ok) {
-              const { uploadUrl } = await generateUploadUrl.json()
-              const uploadResponse = await fetch(uploadUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/pdf' },
-                body: pdfBlob,
-              })
-
-              if (uploadResponse.ok) {
-                const { storageId } = await uploadResponse.json()
-                await createDocumentForIntake({
-                  intakeId,
-                  name: pdfFilename,
-                  type: 'pdf',
-                  mimeType: 'application/pdf',
-                  size: pdfBlob.size,
-                  storageId: storageId as Id<"_storage">,
-                })
-              }
-            }
-          } catch (pdfError) {
-            console.error('Failed to auto-generate PDF:', pdfError)
-          }
-        }
-
-        // No contact created - show success without opportunity
-        setSuccessData({
-          intakeId: intakeId,
-          appointmentId: appointmentId ? String(appointmentId) : undefined,
-          contactId: undefined,
-          opportunityId: undefined,
-          formData: { ...formData },
-          appointmentInfo: appointmentInfoForPdf,
-          isFormComplete: status === 'complete',
-        })
-        setShowSuccessPopup(true)
-      }
+      // Show success - intake is now a pending lead
+      setSuccessData({
+        intakeId: intakeId,
+        appointmentId: appointmentId ? String(appointmentId) : undefined,
+        formData: { ...formData },
+        appointmentInfo: appointmentInfoForPdf,
+        isFormComplete: status === 'complete',
+      })
+      setShowSuccessPopup(true)
 
       // Reset form
       setFormData(initialFormData)
@@ -985,15 +817,9 @@ export default function NewIntakePage() {
               <DialogDescription asChild>
                 <div className="text-center">
                   <p className="text-gray-500 text-sm mb-4">
-                    {successData?.contactId && successData?.appointmentId && successData?.opportunityId
-                      ? 'Contact, intake, appointment, and opportunity have been created and linked.'
-                      : successData?.contactId && successData?.opportunityId
-                        ? 'Contact, intake, and opportunity have been created and linked.'
-                        : successData?.contactId
-                          ? 'Contact and intake have been created and linked.'
-                          : successData?.appointmentId
-                            ? 'Intake and appointment have been saved (no contact created - missing email/phone).'
-                            : 'Intake has been saved (no contact created - missing email/phone).'}
+                    {successData?.appointmentId
+                      ? 'Intake and appointment have been saved. This lead is now pending review.'
+                      : 'Intake has been saved. This lead is now pending review.'}
                   </p>
 
                   {/* Action Buttons */}
@@ -1011,22 +837,6 @@ export default function NewIntakePage() {
                       </Button>
                     )}
 
-                    {successData?.contactId && (
-                      <Button
-                        asChild
-                        className="w-full bg-blue-600 hover:bg-blue-700"
-                      >
-                        <a
-                          href={`/contacts/${successData.contactId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <User className="h-4 w-4 mr-2" />
-                          View Contact
-                          <ExternalLink className="h-3 w-3 ml-2" />
-                        </a>
-                      </Button>
-                    )}
                     {successData?.appointmentId && (
                       <Button
                         asChild
@@ -1039,26 +849,19 @@ export default function NewIntakePage() {
                         >
                           <Calendar className="h-4 w-4 mr-2" />
                           View Appointment
-                          <ExternalLink className="h-3 w-3 ml-2" />
                         </a>
                       </Button>
                     )}
-                    {successData?.opportunityId && (
-                      <Button
-                        asChild
-                        className="w-full bg-purple-600 hover:bg-purple-700"
-                      >
-                        <a
-                          href={`/opportunities?id=${successData.opportunityId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Briefcase className="h-4 w-4 mr-2" />
-                          View Opportunity
-                          <ExternalLink className="h-3 w-3 ml-2" />
-                        </a>
-                      </Button>
-                    )}
+
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="w-full"
+                    >
+                      <Link href="/leads">
+                        View in Leads
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               </DialogDescription>

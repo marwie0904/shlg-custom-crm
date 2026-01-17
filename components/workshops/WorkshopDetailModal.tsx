@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockWorkshopWithDetails, useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +19,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   FileText,
@@ -109,12 +120,11 @@ const statusColors: Record<string, string> = {
   Full: "bg-purple-100 text-purple-700",
 };
 
-const registrationStatusColors: Record<string, string> = {
-  registered: "bg-blue-100 text-blue-700",
-  attended: "bg-green-100 text-green-700",
-  "no-show": "bg-red-100 text-red-700",
-  cancelled: "bg-gray-100 text-gray-500",
-};
+const registrationStatusOptions = [
+  { value: "registered", label: "Registered", color: "text-blue-600" },
+  { value: "attended", label: "Attended", color: "text-green-600" },
+  { value: "no-show", label: "No Show", color: "text-red-600" },
+];
 
 export function WorkshopDetailModal({
   workshopId,
@@ -124,17 +134,29 @@ export function WorkshopDetailModal({
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddAttendeeOpen, setIsAddAttendeeOpen] = useState(false);
+  // Local state to track registration status changes (persists until browser refresh)
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, string>>({});
 
-  // Fetch workshop with details
-  const workshop = useQuery(
-    api.workshops.getWithDetails,
-    workshopId ? { id: workshopId } : "skip"
+  // Use mock data or real Convex data based on environment
+  const mockWorkshop = useMockWorkshopWithDetails(workshopId as string | null);
+  const mockMutation = useMockMutation();
+
+  // Fetch workshop with details (skip in mock mode)
+  const convexWorkshop = useQuery(
+    USE_MOCK_DATA ? "skip" : api.workshops.getWithDetails,
+    USE_MOCK_DATA ? "skip" : (workshopId ? { id: workshopId } : "skip")
   ) as WorkshopWithDetails | null | undefined;
 
-  // Mutations
-  const createTask = useMutation(api.tasks.create);
-  const toggleTaskComplete = useMutation(api.tasks.toggleComplete);
-  const updateWorkshopStatus = useMutation(api.workshops.updateStatus);
+  const workshop = USE_MOCK_DATA ? (mockWorkshop as WorkshopWithDetails | null) : convexWorkshop;
+
+  // Mutations (use mock in demo mode)
+  const createTaskMutation = useMutation(api.tasks.create);
+  const toggleTaskCompleteMutation = useMutation(api.tasks.toggleComplete);
+  const updateWorkshopStatusMutation = useMutation(api.workshops.updateStatus);
+
+  const createTask = USE_MOCK_DATA ? mockMutation : createTaskMutation;
+  const toggleTaskComplete = USE_MOCK_DATA ? mockMutation : toggleTaskCompleteMutation;
+  const updateWorkshopStatus = USE_MOCK_DATA ? mockMutation : updateWorkshopStatusMutation;
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -147,6 +169,10 @@ export function WorkshopDetailModal({
 
   const handleCreateTask = async (taskData: NewTaskData) => {
     if (!workshopId) return;
+    if (USE_MOCK_DATA) {
+      toast.success("Task created (mock mode)");
+      return;
+    }
     try {
       await createTask({
         title: taskData.title,
@@ -162,6 +188,10 @@ export function WorkshopDetailModal({
   };
 
   const handleToggleTaskComplete = async (taskId: Id<"tasks">) => {
+    if (USE_MOCK_DATA) {
+      toast.success("Task toggled (mock mode)");
+      return;
+    }
     try {
       const result = await toggleTaskComplete({ id: taskId });
 
@@ -440,13 +470,35 @@ export function WorkshopDetailModal({
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <Badge
-                  className={`${
-                    registrationStatusColors[registration.status] || "bg-gray-100 text-gray-700"
-                  } border-0 capitalize`}
+                <Select
+                  value={statusOverrides[registration._id as string] || registration.status}
+                  onValueChange={(value) => {
+                    setStatusOverrides(prev => ({
+                      ...prev,
+                      [registration._id as string]: value
+                    }));
+                    if (USE_MOCK_DATA) {
+                      const label = registrationStatusOptions.find(o => o.value === value)?.label || value;
+                      toast.success(`Status updated to "${label}"`);
+                    }
+                    // TODO: Call mutation to update registration status
+                  }}
                 >
-                  {registration.status.replace("-", " ")}
-                </Badge>
+                  <SelectTrigger className="w-[130px] h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {registrationStatusOptions.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        className={option.color}
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <p className="text-xs text-gray-400">
                   {format(new Date(registration.registeredAt), "MMM d, yyyy")}
                 </p>

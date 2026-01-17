@@ -39,8 +39,15 @@ export interface OpportunityForKanban {
   pipelineId: string;
   stageId: string;
   estimatedValue: number;
+  practiceArea?: string;
+  source?: string;
+  responsibleAttorneyId?: Id<"users">;
+  responsibleAttorneyName?: string;
   calendarAppointmentDate?: number;
   calendarAppointmentType?: string;
+  didNotHireAt?: number;
+  didNotHireReason?: string;
+  didNotHirePoint?: string;
   createdAt: number;
   updatedAt: number;
   contact: KanbanContact | null;
@@ -119,6 +126,17 @@ export interface OpportunityDocument {
   downloadUrl?: string | null;
 }
 
+// Related contact with relationship
+export interface RelatedContact {
+  _id: Id<"opportunityContacts">;
+  opportunityId: Id<"opportunities">;
+  contactId: Id<"contacts">;
+  relationship: string;
+  notes?: string;
+  createdAt: number;
+  contact: OpportunityContact | null;
+}
+
 // Full opportunity with related data
 export interface OpportunityWithRelated {
   _id: Id<"opportunities">;
@@ -127,9 +145,16 @@ export interface OpportunityWithRelated {
   pipelineId: string;
   stageId: string;
   estimatedValue: number;
+  practiceArea?: string;
+  source?: string;
+  responsibleAttorneyId?: Id<"users">;
+  responsibleAttorneyName?: string;
   notes?: string;
   calendarAppointmentDate?: number;
   calendarAppointmentType?: string;
+  didNotHireAt?: number;
+  didNotHireReason?: string;
+  didNotHirePoint?: string;
   ghlOpportunityId?: string;
   createdAt: number;
   updatedAt: number;
@@ -140,6 +165,7 @@ export interface OpportunityWithRelated {
   tasks: OpportunityTask[];
   workshops: OpportunityWorkshop[];
   documents: OpportunityDocument[];
+  relatedContacts?: RelatedContact[];
 }
 
 // Helper to get contact display name (works with both full and Kanban contact)

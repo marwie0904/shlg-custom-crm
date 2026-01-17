@@ -3,6 +3,27 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 
+/**
+ * AUTH BYPASS FOR DEVELOPMENT/DEMO
+ * =================================
+ * Set NEXT_PUBLIC_USE_MOCK_DATA=true in .env.local to bypass all authentication.
+ *
+ * TO RESTORE AUTHENTICATION:
+ * 1. Set NEXT_PUBLIC_USE_MOCK_DATA=false in .env.local
+ * 2. Or delete the variable entirely
+ */
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+
+// Mock user for demo mode
+const MOCK_USER = {
+  id: "mock-user-001",
+  name: "Demo User",
+  email: "demo@safeharbor.com",
+  role: "admin",
+  mustChangePassword: false,
+  emailVerified: true,
+};
+
 interface User {
   id: string;
   name: string;
@@ -31,12 +52,16 @@ const PUBLIC_ROUTES = ["/login", "/verify", "/change-password"];
 const ADMIN_ROUTES = ["/admin"];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(USE_MOCK_DATA ? MOCK_USER : null);
+  const [isLoading, setIsLoading] = useState(!USE_MOCK_DATA);
   const router = useRouter();
   const pathname = usePathname();
 
   const refreshAuth = useCallback(async () => {
+    // Skip API call in mock mode - user is already set
+    if (USE_MOCK_DATA) {
+      return;
+    }
     try {
       const response = await fetch("/api/auth/session");
       if (response.ok) {
@@ -56,8 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     refreshAuth();
   }, [refreshAuth]);
 
-  // Handle route protection
+  // Handle route protection - SKIP IN MOCK MODE
   useEffect(() => {
+    // Skip all route protection in mock mode
+    if (USE_MOCK_DATA) return;
+
     if (isLoading) return;
 
     const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));

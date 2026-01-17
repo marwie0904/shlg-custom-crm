@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Table,
   TableBody,
   TableCell,
@@ -24,26 +31,46 @@ import {
   AlertCircle,
   CheckCircle2,
   Eye,
+  Filter,
+  X,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { practiceAreaOptions } from '@/lib/intake-constants'
+import { IntakeDetailModal } from '@/components/intake/IntakeDetailModal'
 
 export default function IntakeListPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
+  const [practiceAreaFilter, setPracticeAreaFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [selectedIntakeId, setSelectedIntakeId] = useState<string | null>(null)
 
   // Fetch intake submissions from Convex
   const intakeSubmissions = useQuery(api.intake.list, { limit: 100 })
 
-  // Filter submissions based on search query
+  // Filter submissions based on search query and filters
   const filteredSubmissions = (intakeSubmissions ?? []).filter((submission) => {
     const query = searchQuery.toLowerCase()
     const fullName = `${submission.firstName} ${submission.lastName}`.toLowerCase()
-    return (
+
+    // Search filter
+    const matchesSearch =
       fullName.includes(query) ||
       (submission.email?.toLowerCase() || '').includes(query) ||
       (submission.phone || '').includes(query) ||
       (submission.practiceArea?.toLowerCase() || '').includes(query)
-    )
+
+    // Practice area filter
+    const matchesPracticeArea =
+      practiceAreaFilter === 'all' ||
+      submission.practiceArea === practiceAreaFilter
+
+    // Status filter
+    const matchesStatus =
+      statusFilter === 'all' ||
+      submission.status === statusFilter
+
+    return matchesSearch && matchesPracticeArea && matchesStatus
   })
 
   const formatDate = (timestamp: number) => {
@@ -61,6 +88,15 @@ export default function IntakeListPage() {
       year: 'numeric',
     })
   }
+
+  // Clear all filters
+  const clearFilters = () => {
+    setSearchQuery('')
+    setPracticeAreaFilter('all')
+    setStatusFilter('all')
+  }
+
+  const hasActiveFilters = searchQuery || practiceAreaFilter !== 'all' || statusFilter !== 'all'
 
   // Loading state - Skeleton UI
   if (intakeSubmissions === undefined) {
@@ -136,19 +172,63 @@ export default function IntakeListPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          {/* Search Bar */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name, email, phone, or practice area..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          {/* Search Bar and Filters */}
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex items-center gap-4">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, email, phone, or practice area..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              {/* Practice Area Filter */}
+              <Select value={practiceAreaFilter} onValueChange={setPracticeAreaFilter}>
+                <SelectTrigger className="w-[200px]">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Practice Area" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Practice Areas</SelectItem>
+                  {practiceAreaOptions.map((area) => (
+                    <SelectItem key={area} value={area}>
+                      {area}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Status Filter */}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="complete">Complete</SelectItem>
+                  <SelectItem value="incomplete">Incomplete</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Clear Filters */}
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              )}
             </div>
-            <div className="text-sm text-muted-foreground">
-              {filteredSubmissions.length} submission{filteredSubmissions.length !== 1 ? 's' : ''}
+
+            {/* Results Count */}
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                {filteredSubmissions.length} submission{filteredSubmissions.length !== 1 ? 's' : ''}
+                {hasActiveFilters && ` (filtered from ${intakeSubmissions?.length ?? 0})`}
+              </div>
             </div>
           </div>
 
@@ -182,7 +262,7 @@ export default function IntakeListPage() {
                     <TableRow
                       key={submission._id}
                       className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/intake/${submission._id}`)}
+                      onClick={() => setSelectedIntakeId(submission._id)}
                     >
                       <TableCell className="font-medium">
                         {submission.firstName} {submission.lastName}
@@ -233,11 +313,16 @@ export default function IntakeListPage() {
                         {formatDate(submission.createdAt)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/intake/${submission._id}`}>
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </Link>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedIntakeId(submission._id)
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -248,6 +333,13 @@ export default function IntakeListPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Intake Detail Modal */}
+      <IntakeDetailModal
+        intakeId={selectedIntakeId}
+        isOpen={!!selectedIntakeId}
+        onClose={() => setSelectedIntakeId(null)}
+      />
     </div>
   )
 }

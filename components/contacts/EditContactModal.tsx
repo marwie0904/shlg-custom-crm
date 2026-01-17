@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
+import { useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 import {
   Dialog,
   DialogContent,
@@ -86,7 +90,9 @@ export function EditContactModal({
     preferredContactMethod: "",
   });
 
-  const updateContact = useMutation(api.contacts.update);
+  const mockMutation = useMockMutation();
+  const updateContactMutation = useMutation(api.contacts.update);
+  const updateContact = USE_MOCK_DATA ? mockMutation : updateContactMutation;
 
   // Initialize form data when contact changes
   useEffect(() => {

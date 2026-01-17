@@ -1,6 +1,18 @@
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+
 // Meta Graph API version
 const GRAPH_API_VERSION = "v21.0";
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+
+// Initialize Convex client for fetching tokens
+const getConvexClient = () => {
+  const url = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (!url) {
+    throw new Error("NEXT_PUBLIC_CONVEX_URL not configured");
+  }
+  return new ConvexHttpClient(url);
+};
 
 export interface SendMessageResult {
   success: boolean;
@@ -11,6 +23,50 @@ export interface SendMessageResult {
 export interface MetaAttachment {
   type: "image" | "video" | "audio" | "file";
   url: string;
+}
+
+export interface PageCredentials {
+  pageAccessToken: string;
+  pageId: string;
+}
+
+/**
+ * Get page credentials from database or fall back to env vars
+ */
+async function getPageCredentials(
+  platform: "messenger" | "instagram"
+): Promise<PageCredentials | null> {
+  try {
+    const convex = getConvexClient();
+
+    // Try to get active page from database
+    const dbPlatform = platform === "messenger" ? "facebook" : "instagram";
+    const activePage = await convex.query(api.metaOAuth.getActivePage, {
+      platform: dbPlatform,
+    });
+
+    if (activePage) {
+      return {
+        pageAccessToken: activePage.pageAccessToken,
+        pageId: activePage.pageId,
+      };
+    }
+  } catch (error) {
+    console.warn("[MetaService] Failed to fetch credentials from DB, falling back to env vars:", error);
+  }
+
+  // Fall back to environment variables (backward compatibility)
+  const envToken = process.env.META_PAGE_ACCESS_TOKEN;
+  const envPageId = process.env.META_PAGE_ID;
+
+  if (envToken && envPageId) {
+    return {
+      pageAccessToken: envToken,
+      pageId: envPageId,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -44,15 +100,17 @@ async function sendMetaMessage(
   message: string,
   attachment?: MetaAttachment
 ): Promise<SendMessageResult> {
-  const accessToken = process.env.META_PAGE_ACCESS_TOKEN;
-  const pageId = process.env.META_PAGE_ID;
+  // Get credentials from database or env vars
+  const credentials = await getPageCredentials(platform);
 
-  if (!accessToken || !pageId) {
+  if (!credentials) {
     return {
       success: false,
-      error: "Missing META_PAGE_ACCESS_TOKEN or META_PAGE_ID",
+      error: "No Meta page credentials configured. Please connect a Facebook/Instagram page.",
     };
   }
+
+  const { pageAccessToken: accessToken, pageId } = credentials;
 
   // Build the message payload
   interface MessagePayload {
@@ -141,11 +199,13 @@ export async function getUserProfile(
   };
   error?: string;
 }> {
-  const accessToken = process.env.META_PAGE_ACCESS_TOKEN;
+  const credentials = await getPageCredentials(platform);
 
-  if (!accessToken) {
-    return { success: false, error: "Missing META_PAGE_ACCESS_TOKEN" };
+  if (!credentials) {
+    return { success: false, error: "No Meta page credentials configured" };
   }
+
+  const { pageAccessToken: accessToken } = credentials;
 
   const fields =
     platform === "instagram"
@@ -190,12 +250,13 @@ export async function markMessageSeen(
   recipientId: string,
   platform: "messenger" | "instagram"
 ): Promise<boolean> {
-  const accessToken = process.env.META_PAGE_ACCESS_TOKEN;
-  const pageId = process.env.META_PAGE_ID;
+  const credentials = await getPageCredentials(platform);
 
-  if (!accessToken || !pageId) {
+  if (!credentials) {
     return false;
   }
+
+  const { pageAccessToken: accessToken, pageId } = credentials;
 
   const endpoint =
     platform === "instagram"
@@ -228,12 +289,13 @@ export async function sendTypingIndicator(
   platform: "messenger" | "instagram",
   typing: boolean = true
 ): Promise<boolean> {
-  const accessToken = process.env.META_PAGE_ACCESS_TOKEN;
-  const pageId = process.env.META_PAGE_ID;
+  const credentials = await getPageCredentials(platform);
 
-  if (!accessToken || !pageId) {
+  if (!credentials) {
     return false;
   }
+
+  const { pageAccessToken: accessToken, pageId } = credentials;
 
   const endpoint =
     platform === "instagram"

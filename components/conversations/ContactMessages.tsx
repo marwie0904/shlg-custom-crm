@@ -11,6 +11,10 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { Send, MessageCircle, Instagram, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { useMockMutation } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 function getInitials(firstName?: string, lastName?: string) {
   const first = firstName?.charAt(0) || "";
@@ -51,18 +55,26 @@ export function ContactMessages({ contactId, className }: ContactMessagesProps) 
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch conversations for this contact
-  const conversations = useQuery(api.conversations.getByContactId, { contactId });
+  // Mock mutation
+  const mockMutation = useMockMutation();
 
-  // Fetch messages for selected conversation
-  const conversationWithMessages = useQuery(
-    api.conversations.getWithMessages,
-    selectedConversationId ? { id: selectedConversationId } : "skip"
+  // Fetch conversations for this contact (skip in mock mode)
+  const conversations = useQuery(
+    USE_MOCK_DATA ? "skip" : api.conversations.getByContactId,
+    USE_MOCK_DATA ? "skip" : { contactId }
   );
 
-  // Mutations
-  const sendMessage = useMutation(api.conversations.sendMessageWithMeta);
-  const markAsRead = useMutation(api.conversations.markAsRead);
+  // Fetch messages for selected conversation (skip in mock mode)
+  const conversationWithMessages = useQuery(
+    USE_MOCK_DATA ? "skip" : api.conversations.getWithMessages,
+    USE_MOCK_DATA ? "skip" : (selectedConversationId ? { id: selectedConversationId } : "skip")
+  );
+
+  // Mutations (use mock in demo mode)
+  const sendMessageMutation = useMutation(api.conversations.sendMessageWithMeta);
+  const markAsReadMutation = useMutation(api.conversations.markAsRead);
+  const sendMessage = USE_MOCK_DATA ? mockMutation : sendMessageMutation;
+  const markAsRead = USE_MOCK_DATA ? mockMutation : markAsReadMutation;
 
   // Auto-select first conversation
   useEffect(() => {

@@ -11,6 +11,10 @@ import { AddProductModal } from "@/components/invoices/AddProductModal";
 import { InvoiceDetailModal } from "@/components/invoices/InvoiceDetailModal";
 import { InvoicesSkeleton } from "@/components/invoices/InvoicesSkeleton";
 import { Search, Plus, MoreHorizontal, ExternalLink, Package } from "lucide-react";
+import { useMockInvoices } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 const statusColors: Record<string, string> = {
   Draft: "bg-gray-100 text-gray-700",
@@ -70,10 +74,16 @@ export default function InvoicesPage() {
   } | null>(null);
   const [isInvoiceDetailOpen, setIsInvoiceDetailOpen] = useState(false);
 
-  // Fetch invoices from Convex
-  const invoices = useQuery(api.invoices.list, { limit: 100 });
+  // Use mock data or real Convex data based on environment
+  const mockInvoices = useMockInvoices({ limit: 100 });
+  const convexInvoices = useQuery(
+    USE_MOCK_DATA ? "skip" : api.invoices.list,
+    USE_MOCK_DATA ? "skip" : { limit: 100 }
+  );
 
-  const isLoading = invoices === undefined;
+  const invoices = USE_MOCK_DATA ? mockInvoices : convexInvoices;
+
+  const isLoading = !USE_MOCK_DATA && invoices === undefined;
 
   // Filter invoices based on search query
   const filteredInvoices = useMemo(() => {

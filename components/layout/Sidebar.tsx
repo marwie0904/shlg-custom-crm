@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
-  MessageSquare,
   FileText,
   Calendar,
   Users,
@@ -22,22 +21,29 @@ import {
   Receipt,
   GraduationCap,
   CheckSquare,
+  ClipboardList,
   LogOut,
   User,
   ChevronLeft,
   ChevronRight,
+  Columns3,
+  Inbox,
+  MessageSquare,
 } from "lucide-react";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Conversations", href: "/conversations", icon: MessageSquare },
-  { name: "Intake", href: "/intake", icon: FileText },
-  { name: "Calendars", href: "/calendars", icon: Calendar },
-  { name: "Contacts", href: "/contacts", icon: Users },
+  { name: "Tasks", href: "/tasks", icon: CheckSquare },
+  { name: "Leads", href: "/leads", icon: Inbox },
+  { name: "Pipeline", href: "/pipeline", icon: Columns3 },
   { name: "Opportunities", href: "/opportunities", icon: Target },
+  { name: "Contacts", href: "/contacts", icon: Users },
+  { name: "Communications", href: "/conversations", icon: MessageSquare },
+  { name: "Calendars", href: "/calendars", icon: Calendar },
+  { name: "Intake", href: "/intake", icon: FileText },
   { name: "Invoices", href: "/invoices", icon: Receipt },
   { name: "Workshops", href: "/workshops", icon: GraduationCap },
-  { name: "Tasks", href: "/tasks", icon: CheckSquare },
+  { name: "Forms", href: "/forms", icon: ClipboardList },
 ];
 
 export default function Sidebar() {

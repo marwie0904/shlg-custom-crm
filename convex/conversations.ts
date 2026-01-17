@@ -350,7 +350,7 @@ export const ingestMetaMessage = mutation({
           title: contactName,
           contactId: contactId,
           pipelineId: "Main Lead Flow",
-          stageId: freshLeadsStage._id,
+          stageId: freshLeadsStage._id.toString(), // Convert to string to match schema
           estimatedValue: 0,
           createdAt: now,
           updatedAt: now,

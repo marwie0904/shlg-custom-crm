@@ -6,14 +6,34 @@ import { api } from "@/convex/_generated/api";
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 const GRAPH_API_VERSION = "v21.0";
 
+/**
+ * Get page access token for a specific page ID
+ * Falls back to env var if no stored token found
+ */
+async function getPageAccessToken(pageId: string): Promise<string | null> {
+  try {
+    // Try to get from database
+    const pageData = await convex.query(api.metaOAuth.getPageAccessToken, { pageId });
+    if (pageData?.pageAccessToken) {
+      return pageData.pageAccessToken;
+    }
+  } catch (error) {
+    console.warn("[Meta Webhook] Failed to fetch token from DB:", error);
+  }
+
+  // Fall back to env var
+  return process.env.META_PAGE_ACCESS_TOKEN || null;
+}
+
 // Fetch user profile from Meta Graph API
-async function fetchUserProfile(userId: string, source: "messenger" | "instagram"): Promise<{
+async function fetchUserProfile(userId: string, source: "messenger" | "instagram", pageId?: string): Promise<{
   firstName?: string;
   lastName?: string;
   name?: string;
   profilePic?: string;
 }> {
-  const accessToken = process.env.META_PAGE_ACCESS_TOKEN;
+  // Get access token for the page receiving the message
+  const accessToken = pageId ? await getPageAccessToken(pageId) : process.env.META_PAGE_ACCESS_TOKEN;
   if (!accessToken) return {};
 
   try {
@@ -159,11 +179,11 @@ interface MessagingEvent {
 
 async function processMessagingEvent(event: MessagingEvent, source: "messenger" | "instagram") {
   const senderId = event.sender.id;
-  const recipientId = event.recipient.id;
-  const pageId = process.env.META_PAGE_ID;
+  const recipientId = event.recipient.id; // This is the Page ID receiving the message
 
   // Skip if this is our own message (sent from the page)
-  if (senderId === pageId) {
+  // The recipient ID is our page, so if sender equals recipient, it's our message
+  if (senderId === recipientId) {
     console.log("[Meta Webhook] Skipping own message");
     return;
   }
@@ -186,11 +206,12 @@ async function processMessagingEvent(event: MessagingEvent, source: "messenger" 
       messageId,
       text: text.substring(0, 50),
       attachmentsCount: attachments.length,
+      pageId: recipientId,
     });
 
     try {
-      // Fetch user profile from Meta
-      const profile = await fetchUserProfile(senderId, source);
+      // Fetch user profile from Meta using the page's access token
+      const profile = await fetchUserProfile(senderId, source, recipientId);
       console.log(`[Meta Webhook] User profile:`, profile);
 
       // Call Convex to ingest the message

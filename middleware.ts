@@ -2,12 +2,23 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
+/**
+ * AUTH BYPASS FOR DEVELOPMENT/DEMO
+ * =================================
+ * Set NEXT_PUBLIC_USE_MOCK_DATA=true in .env.local to bypass all authentication.
+ *
+ * TO RESTORE AUTHENTICATION:
+ * 1. Set NEXT_PUBLIC_USE_MOCK_DATA=false in .env.local
+ * 2. Or delete the variable entirely
+ */
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "your-secret-key-change-in-production"
 );
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ["/login", "/verify", "/api/auth"];
+const PUBLIC_ROUTES = ["/login", "/verify", "/api/auth", "/portal"];
 // Routes that require admin role
 const ADMIN_ROUTES = ["/admin"];
 
@@ -30,6 +41,14 @@ async function verifyToken(token: string): Promise<SessionPayload | null> {
 }
 
 export async function middleware(request: NextRequest) {
+  // BYPASS AUTH FOR MOCK DATA MODE
+  if (USE_MOCK_DATA) {
+    // Redirect login page to dashboard in mock mode
+    if (request.nextUrl.pathname === "/login") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    return NextResponse.next();
+  }
   const { pathname } = request.nextUrl;
 
   // Allow API routes to handle their own auth (except session which needs the cookie)

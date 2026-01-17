@@ -1,16 +1,43 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, MoreHorizontal } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Calendar as CalendarIcon, User, X } from "lucide-react";
 import { AddTaskModal, NewTaskData } from "@/components/tasks/AddTaskModal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useMockTasks, useMockMutation } from "@/lib/hooks/use-mock-data";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { DateRange } from "react-day-picker";
+import { format } from "date-fns";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
+
+// Mock users for testing the filter UI
+const MOCK_USERS = [
+  { _id: "1", name: "Jacqui Calma", email: "jacqui@shlf.com", role: "staff" },
+  { _id: "2", name: "Andy Baker", email: "andy@shlf.com", role: "attorney" },
+  { _id: "3", name: "Gabriella Ang", email: "gabriella@shlf.com", role: "paralegal" },
+  { _id: "4", name: "Mar Wie Ang", email: "marwie@shlf.com", role: "admin" },
+];
 
 interface TaskWithRelated {
   _id: Id<"tasks">;
@@ -24,6 +51,7 @@ interface TaskWithRelated {
   completed: boolean;
   completedAt?: number;
   priority?: string;
+  attempt?: number;
   contactId?: Id<"contacts">;
   opportunityId?: Id<"opportunities">;
   workshopId?: Id<"workshops">;
@@ -31,6 +59,7 @@ interface TaskWithRelated {
   opportunityTitle: string | null;
   workshopTitle: string | null;
 }
+
 
 const statusColors: Record<string, string> = {
   Pending: "bg-yellow-100 text-yellow-700",
@@ -49,6 +78,33 @@ function formatDate(timestamp?: number): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function isDateInRange(dueDate: number | undefined, dateRange: DateRange | undefined): boolean {
+  // If no date range filter is set, show all tasks
+  if (!dateRange || (!dateRange.from && !dateRange.to)) return true;
+
+  // If task has no due date, don't show it when filtering by date
+  if (!dueDate) return false;
+
+  const taskDate = new Date(dueDate);
+  // Reset time to start of day for comparison
+  const taskDay = new Date(taskDate.getFullYear(), taskDate.getMonth(), taskDate.getDate());
+
+  // Single date selected (from only)
+  if (dateRange.from && !dateRange.to) {
+    const fromDay = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate());
+    return taskDay.getTime() === fromDay.getTime();
+  }
+
+  // Date range selected
+  if (dateRange.from && dateRange.to) {
+    const fromDay = new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate());
+    const toDay = new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate());
+    return taskDay >= fromDay && taskDay <= toDay;
+  }
+
+  return true;
 }
 
 function truncateText(text?: string, maxLength: number = 50): string {
@@ -90,6 +146,9 @@ function TaskTable({ tasks, onToggleComplete, animatingTasks, title }: TaskTable
               </th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
                 Assigned
+              </th>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
+                Attempt
               </th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
                 Type
@@ -153,6 +212,11 @@ function TaskTable({ tasks, onToggleComplete, animatingTasks, title }: TaskTable
                       {task.assignedToName || task.assignedTo || "—"}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    <span className={`transition-all duration-300 ${task.completed || isAnimating ? "text-gray-400" : ""}`}>
+                      {task.attempt || "—"}
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     {task.workshopId ? (
                       <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-700">
@@ -207,15 +271,33 @@ function TaskTable({ tasks, onToggleComplete, animatingTasks, title }: TaskTable
 export default function TasksPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<FilterType>("pending");
+  const [userFilter, setUserFilter] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [animatingTasks, setAnimatingTasks] = useState<Set<string>>(new Set());
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
 
-  // Fetch tasks from Convex
-  const allTasks = useQuery(api.tasks.listWithRelated, {}) as TaskWithRelated[] | undefined;
+  // Use mock data or real Convex data based on environment
+  const mockTasks = useMockTasks({ searchQuery: searchQuery || undefined });
+  const mockMutation = useMockMutation();
 
-  // Mutations
-  const toggleComplete = useMutation(api.tasks.toggleComplete);
-  const createTask = useMutation(api.tasks.create);
+  // Fetch users for the filter dropdown (use mock data for now)
+  const convexUsers = useQuery(api.users.list, USE_MOCK_DATA ? "skip" : {}) ?? [];
+  const users = convexUsers.length > 0 ? convexUsers : MOCK_USERS;
+
+  // Fetch tasks from Convex (or skip if mock mode)
+  const convexTasks = useQuery(
+    USE_MOCK_DATA ? "skip" : api.tasks.listWithRelated,
+    USE_MOCK_DATA ? "skip" : {}
+  ) as TaskWithRelated[] | undefined;
+
+  // Use Convex tasks if available, otherwise fall back to mock tasks for testing
+  const allTasks = USE_MOCK_DATA
+    ? (mockTasks as unknown as TaskWithRelated[])
+    : (convexTasks && convexTasks.length > 0 ? convexTasks : (mockTasks as unknown as TaskWithRelated[]));
+
+  // Mutations (use mock in demo mode)
+  const toggleComplete = USE_MOCK_DATA ? mockMutation : useMutation(api.tasks.toggleComplete);
+  const createTask = USE_MOCK_DATA ? mockMutation : useMutation(api.tasks.create);
 
   const handleCreateTask = async (taskData: NewTaskData) => {
     try {
@@ -274,14 +356,28 @@ export default function TasksPage() {
     }
   }, [allTasks, toggleComplete]);
 
-  // Filter tasks by search query
-  const filteredTasks = (allTasks ?? []).filter(
-    (task) =>
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
-      (task.assignedToName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
-      (task.status?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
-  );
+  // Filter tasks by search query, user, and date
+  const filteredTasks = useMemo(() => {
+    return (allTasks ?? []).filter((task) => {
+      // Search filter
+      const matchesSearch =
+        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+        (task.assignedToName?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false) ||
+        (task.status?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
+
+      // User filter
+      const matchesUser =
+        userFilter === "all" ||
+        task.assignedTo === userFilter ||
+        task.assignedToName === userFilter;
+
+      // Date filter
+      const matchesDate = isDateInRange(task.dueDate, dateRange);
+
+      return matchesSearch && matchesUser && matchesDate;
+    });
+  }, [allTasks, searchQuery, userFilter, dateRange]);
 
   const pendingTasks = filteredTasks.filter((task) => !task.completed);
   const completedTasks = filteredTasks.filter((task) => task.completed);
@@ -297,7 +393,7 @@ export default function TasksPage() {
     }
   };
 
-  const isLoading = allTasks === undefined;
+  const isLoading = !USE_MOCK_DATA && allTasks === undefined;
 
   // Skeleton loading component
   const TaskTableSkeleton = () => (
@@ -312,6 +408,7 @@ export default function TasksPage() {
               <th className="px-4 py-3 text-left"><Skeleton className="h-4 w-20" /></th>
               <th className="px-4 py-3 text-left"><Skeleton className="h-4 w-20" /></th>
               <th className="px-4 py-3 text-left"><Skeleton className="h-4 w-16" /></th>
+              <th className="px-4 py-3 text-left"><Skeleton className="h-4 w-16" /></th>
               <th className="px-4 py-3 text-left"><Skeleton className="h-4 w-24" /></th>
               <th className="px-4 py-3 text-left"><Skeleton className="h-4 w-16" /></th>
               <th className="px-4 py-3"><Skeleton className="h-4 w-4" /></th>
@@ -325,6 +422,7 @@ export default function TasksPage() {
                 <td className="px-4 py-3"><Skeleton className="h-4 w-48" /></td>
                 <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
                 <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-8" /></td>
                 <td className="px-4 py-3"><Skeleton className="h-5 w-20 rounded-full" /></td>
                 <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
                 <td className="px-4 py-3"><Skeleton className="h-5 w-16 rounded-full" /></td>
@@ -352,9 +450,13 @@ export default function TasksPage() {
           <Skeleton className="h-8 w-12" />
         </div>
 
-        {/* Search and Add Task Row Skeleton */}
+        {/* Search, Filters, and Add Task Row Skeleton */}
         <div className="flex items-center justify-between gap-4">
-          <Skeleton className="h-10 w-80" />
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-10 w-[180px]" />
+            <Skeleton className="h-10 w-[240px]" />
+          </div>
           <Skeleton className="h-10 w-28" />
         </div>
 
@@ -414,16 +516,114 @@ export default function TasksPage() {
         </button>
       </div>
 
-      {/* Search and Add Task Row */}
+      {/* Search, Filters, and Add Task Row */}
       <div className="flex items-center justify-between gap-4">
-        <div className="relative w-80">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="Search tasks..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* User Filter */}
+          <Select value={userFilter} onValueChange={setUserFilter}>
+            <SelectTrigger className="w-[180px]">
+              <User className="h-4 w-4 mr-2 text-gray-400" />
+              <SelectValue placeholder="Filter by user" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Users</SelectItem>
+              {users.map((user) => (
+                <SelectItem key={user._id} value={user.name}>
+                  {user.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Date Filter */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={`w-[240px] justify-start text-left font-normal ${
+                  !dateRange ? "text-muted-foreground" : ""
+                }`}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dateRange?.from ? (
+                  dateRange.to ? (
+                    <>
+                      {format(dateRange.from, "MMM d, yyyy")} -{" "}
+                      {format(dateRange.to, "MMM d, yyyy")}
+                    </>
+                  ) : (
+                    format(dateRange.from, "MMM d, yyyy")
+                  )
+                ) : (
+                  <span>Filter by date</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={setDateRange}
+                numberOfMonths={2}
+              />
+              <div className="flex items-center justify-between p-3 border-t">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setDateRange(undefined)}
+                >
+                  Clear
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date();
+                      setDateRange({ from: today, to: today });
+                    }}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const today = new Date();
+                      const startOfWeek = new Date(today);
+                      startOfWeek.setDate(today.getDate() - today.getDay());
+                      const endOfWeek = new Date(startOfWeek);
+                      endOfWeek.setDate(startOfWeek.getDate() + 6);
+                      setDateRange({ from: startOfWeek, to: endOfWeek });
+                    }}
+                  >
+                    This Week
+                  </Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          {dateRange && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setDateRange(undefined)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
         <Button onClick={() => setIsAddTaskOpen(true)}>
           <Plus className="h-4 w-4" />

@@ -10,6 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Search, Plus, MoreHorizontal, Users } from "lucide-react";
 import { WorkshopDetailModal } from "@/components/workshops/WorkshopDetailModal";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useMockWorkshops } from "@/lib/hooks/use-mock-data";
+
+// Check for mock data mode
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_USE_MOCK_DATA === "true";
 
 const statusColors: Record<string, string> = {
   Draft: "bg-gray-100 text-gray-700",
@@ -41,8 +45,14 @@ export default function WorkshopsPage() {
   const [selectedWorkshopId, setSelectedWorkshopId] = useState<Id<"workshops"> | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Fetch workshops from Convex
-  const workshops = useQuery(api.workshops.list, {});
+  // Use mock data or real Convex data based on environment
+  const mockWorkshopsList = useMockWorkshops();
+  const convexWorkshops = useQuery(
+    USE_MOCK_DATA ? "skip" : api.workshops.list,
+    USE_MOCK_DATA ? "skip" : {}
+  );
+
+  const workshops = USE_MOCK_DATA ? mockWorkshopsList : convexWorkshops;
 
   const filteredWorkshops = workshops?.filter(
     (workshop) =>
@@ -91,8 +101,8 @@ export default function WorkshopsPage() {
 
       {/* Workshops Table */}
       <div className="rounded-lg border bg-white shadow-sm">
-        {/* Loading Skeleton */}
-        {workshops === undefined && (
+        {/* Loading Skeleton (never loading in mock mode) */}
+        {!USE_MOCK_DATA && workshops === undefined && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -144,7 +154,7 @@ export default function WorkshopsPage() {
         )}
 
         {/* Table */}
-        {workshops !== undefined && (
+        {(USE_MOCK_DATA || workshops !== undefined) && (
           <>
             <div className="overflow-x-auto">
               <table className="w-full">

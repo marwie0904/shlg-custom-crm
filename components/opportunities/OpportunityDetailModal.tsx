@@ -33,10 +33,9 @@ import {
   MessageSource,
 } from "@/lib/types/opportunities";
 import { AddAppointmentModal, AppointmentData } from "@/components/calendars/AddAppointmentModal";
-import { ContactMessages } from "@/components/conversations/ContactMessages";
+import { AddRelatedContactModal } from "@/components/opportunities/AddRelatedContactModal";
 import {
   FileText,
-  MessageSquare,
   FolderOpen,
   User,
   Mail,
@@ -54,13 +53,22 @@ import {
   Download,
   Trash2,
   Loader2,
+  History,
+  ClipboardList,
+  Send,
+  StickyNote,
+  XCircle,
+  UserPlus,
+  MapPin,
+  Check,
+  X,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-type TabType = "details" | "messages" | "tasks" | "documents";
+type TabType = "details" | "logs" | "tasks" | "intake" | "documents";
 
 interface OpportunityDetailModalProps {
   opportunityId: Id<"opportunities"> | null;
@@ -71,10 +79,40 @@ interface OpportunityDetailModalProps {
 
 const navItems: { id: TabType; label: string; icon: React.ElementType }[] = [
   { id: "details", label: "Details", icon: FileText },
-  { id: "messages", label: "Messages", icon: MessageSquare },
+  { id: "logs", label: "Logs", icon: History },
   { id: "tasks", label: "Tasks", icon: CheckSquare },
+  { id: "intake", label: "Intake", icon: ClipboardList },
   { id: "documents", label: "Documents", icon: FolderOpen },
 ];
+
+// Mock intake form types for dropdown
+const intakeFormTypes = [
+  { id: "estate_planning", name: "Estate Planning Intake" },
+  { id: "pbta", name: "PBTA Intake" },
+  { id: "medicaid", name: "Medicaid Intake" },
+  { id: "deed", name: "Deed Intake" },
+  { id: "doc_review", name: "Doc Review Intake" },
+  { id: "general", name: "General Intake" },
+];
+
+// Closure point tags for "Did Not Hire"
+const closurePointTags = [
+  { id: "pre_contact", name: "Pre-Contact" },
+  { id: "pre_intake", name: "Pre-intake" },
+  { id: "pre_iv", name: "Pre-I/V" },
+  { id: "post_iv", name: "Post-I/V" },
+];
+
+// Mock log entry type
+interface LogEntry {
+  id: string;
+  type: "communication" | "note" | "update" | "task" | "appointment" | "invoice";
+  title: string;
+  description?: string;
+  timestamp: number;
+  source?: string;
+  user?: string;
+}
 
 const sourceColors: Record<MessageSource, { bg: string; text: string }> = {
   messenger: { bg: "bg-blue-500", text: "text-white" },
@@ -120,6 +158,32 @@ export function OpportunityDetailModal({
   // Pipeline and stage state
   const [selectedPipeline, setSelectedPipeline] = useState<string>("");
   const [selectedStageId, setSelectedStageId] = useState<string>("");
+
+  // Intake form state
+  const [selectedIntakeForm, setSelectedIntakeForm] = useState<string>("estate_planning");
+
+  // Did Not Hire modal state
+  const [isDidNotHireOpen, setIsDidNotHireOpen] = useState(false);
+  const [didNotHireTag, setDidNotHireTag] = useState<string>("");
+  const [didNotHireReason, setDidNotHireReason] = useState<string>("");
+
+  // Related contact modal state
+  const [isAddRelatedContactOpen, setIsAddRelatedContactOpen] = useState(false);
+
+  // Editable opportunity details state (auto-save on blur)
+  const [tempTitle, setTempTitle] = useState("");
+  const [tempNotes, setTempNotes] = useState("");
+
+  // Editable contact details state (auto-save on blur)
+  const [tempContactFirstName, setTempContactFirstName] = useState("");
+  const [tempContactLastName, setTempContactLastName] = useState("");
+  const [tempContactEmail, setTempContactEmail] = useState("");
+  const [tempContactPhone, setTempContactPhone] = useState("");
+
+  // Referral state (auto-save on blur/change)
+  const [tempReferralSource, setTempReferralSource] = useState("");
+  const [tempReferralOther, setTempReferralOther] = useState("");
+  const [tempLeadSource, setTempLeadSource] = useState("");
 
   const handleAppointmentClick = (apt: {
     _id: Id<"appointments">;
@@ -176,6 +240,8 @@ export function OpportunityDetailModal({
   const createTask = useMutation(api.tasks.create);
   const toggleTaskComplete = useMutation(api.tasks.toggleComplete);
   const moveToPipeline = useMutation(api.opportunities.moveToPipeline);
+  const updateOpportunity = useMutation(api.opportunities.update);
+  const updateContact = useMutation(api.contacts.update);
 
   const handleCreateTask = async (taskData: NewTaskData) => {
     if (!opportunity) return;
@@ -189,8 +255,10 @@ export function OpportunityDetailModal({
         opportunityId: opportunity._id,
         contactId: opportunity.contactId,
       });
+      toast.success("Task created");
     } catch (error) {
       console.error("Failed to create task:", error);
+      toast.error("Failed to create task");
     }
   };
 
@@ -245,6 +313,14 @@ export function OpportunityDetailModal({
       .sort((a, b) => a.order - b.order);
   }, [stages, selectedPipeline]);
 
+  // Get "Did Not Hire" stages for reason dropdown
+  const didNotHireStages = useMemo(() => {
+    if (!stages) return [];
+    return stages
+      .filter((s: { pipeline: string }) => s.pipeline === "Did Not Hire")
+      .sort((a: { order: number }, b: { order: number }) => a.order - b.order);
+  }, [stages]);
+
   // Handle pipeline change (local state only - saved on Save Changes)
   const handlePipelineChange = (newPipeline: string) => {
     if (!opportunity || newPipeline === selectedPipeline) return;
@@ -268,6 +344,41 @@ export function OpportunityDetailModal({
     setSelectedStageId(newStageId);
   };
 
+  // Handle "Did Not Hire" submission
+  const handleDidNotHireSubmit = async () => {
+    if (!opportunity || !didNotHireReason) {
+      toast.error("Please select a reason");
+      return;
+    }
+
+    try {
+      await moveToPipeline({
+        id: opportunity._id,
+        pipelineId: "Did Not Hire",
+        stageId: didNotHireReason,
+        didNotHirePoint: didNotHireTag || undefined,
+      });
+
+      // Get tag name for the toast
+      const tagName = closurePointTags.find((t) => t.id === didNotHireTag)?.name || "";
+      const stageName = didNotHireStages.find((s: { _id: string }) => s._id === didNotHireReason)?.name || "";
+
+      toast.success("Opportunity marked as Did Not Hire", {
+        description: `${tagName ? `Closure point: ${tagName}` : ""}${stageName ? ` - ${stageName}` : ""}`,
+        duration: 5000,
+      });
+
+      // Reset modal state
+      setIsDidNotHireOpen(false);
+      setDidNotHireTag("");
+      setDidNotHireReason("");
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Failed to mark as Did Not Hire:", error);
+      toast.error("Failed to mark as Did Not Hire");
+    }
+  };
+
   // Reset state when opportunity changes or modal opens
   useEffect(() => {
     if (open && opportunity) {
@@ -279,6 +390,21 @@ export function OpportunityDetailModal({
       setLocalTaskStates({}); // Reset optimistic states when modal opens
       setSelectedPipeline(opportunity.pipelineId);
       setSelectedStageId(opportunity.stageId);
+
+      // Reset editable fields (auto-save)
+      setTempTitle(opportunity.title);
+      setTempNotes(opportunity.notes ?? "");
+
+      // Reset contact fields (auto-save)
+      setTempContactFirstName(opportunity.contact?.firstName ?? "");
+      setTempContactLastName(opportunity.contact?.lastName ?? "");
+      setTempContactEmail(opportunity.contact?.email ?? "");
+      setTempContactPhone(opportunity.contact?.phone ?? "");
+
+      // Reset referral fields (auto-save)
+      setTempLeadSource(opportunity.contact?.source ?? "");
+      setTempReferralSource("");
+      setTempReferralOther("");
     }
   }, [open, opportunity]);
 
@@ -334,48 +460,248 @@ export function OpportunityDetailModal({
     }
   };
 
+  // Lead source options for dropdown
+  const leadSourceOptions = [
+    { value: "website", label: "Website" },
+    { value: "referral", label: "Referral" },
+    { value: "workshop", label: "Workshop" },
+    { value: "social_media", label: "Social Media" },
+    { value: "messenger", label: "Messenger" },
+    { value: "instagram", label: "Instagram" },
+    { value: "google_ads", label: "Google Ads" },
+    { value: "facebook_ads", label: "Facebook Ads" },
+    { value: "walk_in", label: "Walk-in" },
+    { value: "phone", label: "Phone Call" },
+    { value: "other", label: "Other" },
+  ];
+
+  // Auto-save contact field on blur
+  const handleContactFieldBlur = async (field: string, value: string) => {
+    if (!opportunity?.contact) return;
+    const originalValue = field === "firstName" ? opportunity.contact.firstName :
+                          field === "lastName" ? opportunity.contact.lastName :
+                          field === "email" ? opportunity.contact.email :
+                          field === "phone" ? opportunity.contact.phone : "";
+    if (value === originalValue) return; // No change
+
+    try {
+      await updateContact({
+        id: opportunity.contactId,
+        [field]: value || undefined,
+      });
+      toast.success("Contact updated");
+    } catch (error) {
+      console.error("Failed to update contact:", error);
+      toast.error("Failed to save");
+    }
+  };
+
+  // Auto-save referral field on blur
+  const handleReferralFieldBlur = async (field: string, value: string) => {
+    if (!opportunity?.contact) return;
+    try {
+      await updateContact({
+        id: opportunity.contactId,
+        [field]: value || undefined,
+      });
+      toast.success("Updated");
+    } catch (error) {
+      console.error("Failed to update:", error);
+      toast.error("Failed to save");
+    }
+  };
+
   const renderDetailsTab = () => {
     if (!opportunity) return null;
     return (
     <div className="space-y-6">
-      {/* Contact Section */}
+      {/* Contact Section - Always Editable with Auto-Save */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
-          <User className="h-4 w-4" />
-          <span>Contact</span>
-        </div>
-        <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+            <User className="h-4 w-4" />
+            <span>Contact</span>
+          </div>
           <Link
             href={`/contacts/${opportunity.contactId}`}
             target="_blank"
-            className="inline-flex items-center gap-1.5 font-semibold text-gray-900 hover:text-brand transition-colors group"
+            className="text-xs text-brand hover:text-brand/80 flex items-center gap-1 transition-colors"
           >
-            {contactName}
-            <ExternalLink className="h-3.5 w-3.5 text-gray-400 group-hover:text-brand" />
+            View Full Profile
+            <ExternalLink className="h-3 w-3" />
           </Link>
-          {opportunity.contact?.email && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Mail className="h-3.5 w-3.5 text-gray-400" />
-              <span>{opportunity.contact.email}</span>
-            </div>
-          )}
-          {opportunity.contact?.phone && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Phone className="h-3.5 w-3.5 text-gray-400" />
-              <span>{opportunity.contact.phone}</span>
-            </div>
-          )}
-          {contactSource && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">Source:</span>
-              <Badge
-                className={`${sourceColors[contactSource].bg} ${sourceColors[contactSource].text} border-0`}
-              >
-                {sourceLabels[contactSource]}
-              </Badge>
-            </div>
-          )}
         </div>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500">First Name</label>
+              <Input
+                value={tempContactFirstName}
+                onChange={(e) => setTempContactFirstName(e.target.value)}
+                onBlur={(e) => handleContactFieldBlur("firstName", e.target.value)}
+                className="mt-1 h-9 bg-white"
+                placeholder="First name"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Last Name</label>
+              <Input
+                value={tempContactLastName}
+                onChange={(e) => setTempContactLastName(e.target.value)}
+                onBlur={(e) => handleContactFieldBlur("lastName", e.target.value)}
+                className="mt-1 h-9 bg-white"
+                placeholder="Last name"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Email</label>
+            <Input
+              type="email"
+              value={tempContactEmail}
+              onChange={(e) => setTempContactEmail(e.target.value)}
+              onBlur={(e) => handleContactFieldBlur("email", e.target.value)}
+              className="mt-1 h-9 bg-white"
+              placeholder="email@example.com"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Phone</label>
+            <Input
+              type="tel"
+              value={tempContactPhone}
+              onChange={(e) => setTempContactPhone(e.target.value)}
+              onBlur={(e) => handleContactFieldBlur("phone", e.target.value)}
+              className="mt-1 h-9 bg-white"
+              placeholder="(555) 555-5555"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Referral Section - Always Editable with Auto-Save */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+          <UserPlus className="h-4 w-4" />
+          <span>Lead Source / Referral</span>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+          <div>
+            <label className="text-xs text-gray-500">Lead Source</label>
+            <Select
+              value={tempLeadSource}
+              onValueChange={async (value) => {
+                setTempLeadSource(value);
+                await handleReferralFieldBlur("source", value);
+              }}
+            >
+              <SelectTrigger className="mt-1 h-9 bg-white">
+                <SelectValue placeholder="Select lead source" />
+              </SelectTrigger>
+              <SelectContent>
+                {leadSourceOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Referrer Name</label>
+            <Input
+              value={tempReferralSource}
+              onChange={(e) => setTempReferralSource(e.target.value)}
+              onBlur={(e) => handleReferralFieldBlur("referralSource", e.target.value)}
+              placeholder="Who referred this lead?"
+              className="mt-1 h-9 bg-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">Additional Details</label>
+            <Input
+              value={tempReferralOther}
+              onChange={(e) => setTempReferralOther(e.target.value)}
+              onBlur={(e) => handleReferralFieldBlur("referralOther", e.target.value)}
+              placeholder="Any other referral details..."
+              className="mt-1 h-9 bg-white"
+            />
+          </div>
+          {/* Link to Intake Tab */}
+          <div className="pt-2 border-t">
+            <button
+              onClick={() => setActiveTab("intake")}
+              className="text-sm text-brand hover:text-brand/80 flex items-center gap-1.5 transition-colors"
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+              View Intake Form Details
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Related Contacts Section */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+            <UserPlus className="h-4 w-4" />
+            <span>Related Contacts</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setIsAddRelatedContactOpen(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add Related Contact
+          </Button>
+        </div>
+        {opportunity.relatedContacts && opportunity.relatedContacts.length > 0 ? (
+          <div className="space-y-2">
+            {opportunity.relatedContacts.map((rc: { _id: Id<"opportunityContacts">; relationship: string; notes?: string; contact: { _id: Id<"contacts">; firstName: string; lastName: string; email?: string; phone?: string } | null }) => (
+              <div
+                key={rc._id}
+                className="bg-gray-50 rounded-lg p-4 flex items-center justify-between"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/contacts/${rc.contact?._id}`}
+                      target="_blank"
+                      className="font-medium text-gray-900 hover:text-brand transition-colors group inline-flex items-center gap-1"
+                    >
+                      {rc.contact?.firstName} {rc.contact?.lastName}
+                      <ExternalLink className="h-3 w-3 text-gray-400 group-hover:text-brand" />
+                    </Link>
+                    <Badge variant="outline" className="text-xs">
+                      {rc.relationship}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                    {rc.contact?.email && (
+                      <span className="flex items-center gap-1">
+                        <Mail className="h-3 w-3" />
+                        {rc.contact.email}
+                      </span>
+                    )}
+                    {rc.contact?.phone && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {rc.contact.phone}
+                      </span>
+                    )}
+                  </div>
+                  {rc.notes && (
+                    <p className="text-xs text-gray-400 mt-1">{rc.notes}</p>
+                  )}
+                </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Trash2 className="h-4 w-4 text-gray-400 hover:text-red-500" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-500 text-center">
+            No related contacts
+          </div>
+        )}
       </div>
 
       {/* Appointments Section */}
@@ -561,32 +887,265 @@ export function OpportunityDetailModal({
           )}
         </div>
       </div>
-
-      {/* Notes */}
-      <div className="space-y-3">
-        <div className="text-sm font-medium text-gray-500">
-          Opportunity Notes
-        </div>
-        <Textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Add notes about this opportunity..."
-          className="min-h-[100px] resize-none"
-        />
-      </div>
     </div>
   );
   };
 
-  const renderMessagesTab = () => {
+  // Timeline filter state
+  const [timelineFilter, setTimelineFilter] = useState<string>("all");
+
+  const renderLogsTab = () => {
     if (!opportunity) return null;
+
+    // Filter options
+    const filterOptions = [
+      { id: "all", label: "All Activity" },
+      { id: "sms", label: "SMS" },
+      { id: "email", label: "Emails" },
+      { id: "appointment", label: "Appointments" },
+      { id: "update", label: "Opportunity Updates" },
+      { id: "intake", label: "Forms" },
+      { id: "note", label: "Notes" },
+    ];
+
+    // Mock activity entries - like a message feed
+    const mockEntries = [
+      { id: "1", type: "sms", direction: "outbound", title: "Hi Sarah, this is SHLF Law Firm following up on your inquiry. Are you available for a quick call?", timestamp: Date.now() - 3600000, user: "Sheila Condomina" },
+      { id: "2", type: "sms", direction: "inbound", title: "Yes, I can talk this afternoon around 3pm.", timestamp: Date.now() - 3500000, user: "Sarah Thompson" },
+      { id: "3", type: "email", direction: "outbound", title: "Estate Planning Consultation - Follow Up", description: "Thank you for your interest in our estate planning services. As discussed, I've attached our intake form for you to review...", timestamp: Date.now() - 86400000, user: "Sheila Condomina" },
+      { id: "4", type: "appointment", title: "Vision Meeting Scheduled", description: "Naples Office - Room A", timestamp: Date.now() - 86400000 * 2, user: "Andy Baker" },
+      { id: "5", type: "update", title: 'Stage changed to "Consultation Scheduled"', timestamp: Date.now() - 86400000 * 2, user: "Sheila Condomina" },
+      { id: "6", type: "intake", title: "Estate Planning Intake Form", description: "Completed by client", timestamp: Date.now() - 86400000 * 3, user: "Client" },
+      { id: "7", type: "email", direction: "inbound", title: "Re: Estate Planning Consultation", description: "I've completed the intake form as requested. Looking forward to our meeting.", timestamp: Date.now() - 86400000 * 3.5, user: "Sarah Thompson" },
+      { id: "8", type: "sms", direction: "outbound", title: "Great! We received your intake form. See you at the consultation.", timestamp: Date.now() - 86400000 * 3.5, user: "Sheila Condomina" },
+      { id: "9", type: "appointment", title: "Discovery Call Completed", description: "Initial consultation with client - EP Discovery Call", timestamp: Date.now() - 86400000 * 5, user: "Sheila Condomina" },
+      { id: "10", type: "update", title: "Opportunity created", timestamp: Date.now() - 86400000 * 6, user: "System" },
+      { id: "11", type: "note", title: "Client referred by: Charles Faber", description: "The client will contact us. She is interested in estate planning for herself and her spouse.", timestamp: Date.now() - 86400000 * 6, user: "Sheila Condomina" },
+    ];
+
+    // Apply filter
+    const filteredEntries = timelineFilter === "all"
+      ? mockEntries
+      : mockEntries.filter(e => e.type === timelineFilter);
+
+    // Sort by timestamp descending (newest first)
+    const sortedEntries = [...filteredEntries].sort((a, b) => b.timestamp - a.timestamp);
+
+    const formatMessageTime = (timestamp: number) => {
+      const now = Date.now();
+      const diff = now - timestamp;
+      const days = Math.floor(diff / 86400000);
+
+      if (days === 0) {
+        return format(new Date(timestamp), "h:mm a");
+      } else if (days === 1) {
+        return "Yesterday " + format(new Date(timestamp), "h:mm a");
+      } else if (days < 7) {
+        return format(new Date(timestamp), "EEEE h:mm a");
+      } else {
+        return format(new Date(timestamp), "MMM d, yyyy h:mm a");
+      }
+    };
+
+    const renderMessageItem = (entry: typeof mockEntries[0]) => {
+      // SMS - Green bubble for outbound, lighter for inbound
+      if (entry.type === "sms") {
+        const isOutbound = entry.direction === "outbound";
+        return (
+          <div key={entry.id} className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[75%] ${isOutbound ? "order-2" : "order-1"}`}>
+              <div
+                className={`px-4 py-3 rounded-2xl ${
+                  isOutbound
+                    ? "bg-green-500 text-white rounded-br-md"
+                    : "bg-green-100 text-gray-900 rounded-bl-md"
+                }`}
+              >
+                <p className="text-sm">{entry.title}</p>
+              </div>
+              <div className={`flex items-center gap-1 mt-1 ${isOutbound ? "justify-end" : "justify-start"}`}>
+                <Phone className="h-3 w-3 text-green-600" />
+                <span className="text-xs text-gray-500">{entry.user} • {formatMessageTime(entry.timestamp)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Email - Blue border style
+      if (entry.type === "email") {
+        const isOutbound = entry.direction === "outbound";
+        return (
+          <div key={entry.id} className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
+            <div className={`max-w-[80%] ${isOutbound ? "order-2" : "order-1"}`}>
+              <div
+                className={`px-4 py-3 rounded-lg border-2 border-blue-400 bg-white ${
+                  isOutbound ? "rounded-br-none" : "rounded-bl-none"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Mail className="h-4 w-4 text-blue-500" />
+                  <span className="font-medium text-sm text-gray-900">{entry.title}</span>
+                </div>
+                {entry.description && (
+                  <p className="text-sm text-gray-600 line-clamp-2">{entry.description}</p>
+                )}
+              </div>
+              <div className={`flex items-center gap-1 mt-1 ${isOutbound ? "justify-end" : "justify-start"}`}>
+                <span className="text-xs text-gray-500">{entry.user} • {formatMessageTime(entry.timestamp)}</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Appointment/Meeting - Yellow outline banner
+      if (entry.type === "appointment") {
+        return (
+          <div key={entry.id} className="flex justify-center my-2">
+            <div className="w-full max-w-[90%] px-4 py-3 rounded-lg border-2 border-yellow-400 bg-yellow-50">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-yellow-600" />
+                <span className="font-medium text-sm text-gray-900">{entry.title}</span>
+              </div>
+              {entry.description && (
+                <p className="text-sm text-gray-600 mt-1 ml-6">{entry.description}</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1 ml-6">{entry.user} • {formatMessageTime(entry.timestamp)}</p>
+            </div>
+          </div>
+        );
+      }
+
+      // Opportunity Updates - Gray outline with blue text
+      if (entry.type === "update") {
+        return (
+          <div key={entry.id} className="flex justify-center my-2">
+            <div className="w-full max-w-[90%] px-4 py-3 rounded-lg border border-gray-300 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-blue-500" />
+                <span className="font-medium text-sm text-blue-600">{entry.title}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1 ml-6">{entry.user} • {formatMessageTime(entry.timestamp)}</p>
+            </div>
+          </div>
+        );
+      }
+
+      // Forms/Intake - Yellow outline banner
+      if (entry.type === "intake") {
+        return (
+          <div key={entry.id} className="flex justify-center my-2">
+            <div className="w-full max-w-[90%] px-4 py-3 rounded-lg border-2 border-yellow-400 bg-yellow-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-yellow-600" />
+                  <span className="font-medium text-sm text-gray-900">{entry.title}</span>
+                </div>
+                <Button variant="outline" size="sm" className="text-xs h-7">
+                  View
+                </Button>
+              </div>
+              {entry.description && (
+                <p className="text-sm text-gray-600 mt-1 ml-6">{entry.description}</p>
+              )}
+              <p className="text-xs text-gray-500 mt-1 ml-6">{entry.user} • {formatMessageTime(entry.timestamp)}</p>
+            </div>
+          </div>
+        );
+      }
+
+      // Notes - Gray style with edit option
+      if (entry.type === "note") {
+        return (
+          <div key={entry.id} className="flex justify-center my-2">
+            <div className="w-full max-w-[90%] px-4 py-3 rounded-lg border border-gray-200 bg-gray-50">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <StickyNote className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium text-xs text-gray-500 uppercase">Note</span>
+                </div>
+                <Button variant="ghost" size="sm" className="text-xs h-7 text-gray-500">
+                  Edit
+                </Button>
+              </div>
+              <p className="text-sm font-medium text-gray-900">{entry.title}</p>
+              {entry.description && (
+                <p className="text-sm text-gray-600 mt-1">{entry.description}</p>
+              )}
+              <p className="text-xs text-gray-500 mt-2">{entry.user} • {formatMessageTime(entry.timestamp)}</p>
+            </div>
+          </div>
+        );
+      }
+
+      return null;
+    };
+
     return (
-      <ContactMessages
-        contactId={opportunity.contactId}
-        className="h-[400px]"
-      />
+      <div className="space-y-4">
+        {/* Header with filter */}
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900">Activity</h3>
+          <div className="flex items-center gap-2">
+            <Select value={timelineFilter} onValueChange={setTimelineFilter}>
+              <SelectTrigger className="w-[160px] h-9">
+                <SelectValue placeholder="Filter" />
+              </SelectTrigger>
+              <SelectContent>
+                {filterOptions.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm">
+              <Plus className="h-4 w-4 mr-1" />
+              Add Note
+            </Button>
+          </div>
+        </div>
+
+        {/* Message feed container */}
+        <div className="bg-gray-100 rounded-lg p-4 min-h-[400px] max-h-[500px] overflow-y-auto">
+          <div className="space-y-4">
+            {sortedEntries.length > 0 ? (
+              sortedEntries.map(entry => renderMessageItem(entry))
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                <History className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <p>No activity yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Legend */}
+        <div className="flex items-center justify-center gap-4 text-xs text-gray-500">
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded bg-green-500"></div>
+            <span>SMS</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded border-2 border-blue-400"></div>
+            <span>Email</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded border-2 border-yellow-400 bg-yellow-50"></div>
+            <span>Meeting/Form</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rounded border border-gray-300 bg-gray-50"></div>
+            <span>Update</span>
+          </div>
+        </div>
+      </div>
     );
   };
+
+  // Mock intake task state
+  const [intakeTaskCompleted, setIntakeTaskCompleted] = useState(false);
 
   const renderTasksTab = () => {
     if (!opportunity) return null;
@@ -656,6 +1215,43 @@ export function OpportunityDetailModal({
       </div>
     );
 
+    // Render the Intake Tasks section (Attempt 1)
+    const renderIntakeTasksSection = () => (
+      <div className="space-y-3 pb-4 border-b border-gray-200">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-brand" />
+          <h4 className="text-sm font-semibold text-gray-900">Intake Tasks</h4>
+        </div>
+        <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+          <button
+            className="mt-0.5 flex-shrink-0"
+            onClick={() => setIntakeTaskCompleted(!intakeTaskCompleted)}
+          >
+            {intakeTaskCompleted ? (
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            ) : (
+              <Circle className="h-5 w-5 text-blue-400 hover:text-blue-500" />
+            )}
+          </button>
+          <div className="flex-1 min-w-0">
+            <p
+              className={`font-medium text-sm ${
+                intakeTaskCompleted ? "text-gray-400 line-through" : "text-gray-900"
+              }`}
+            >
+              Attempt 1
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Initial intake attempt - contact the lead
+            </p>
+          </div>
+          <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+            Intake
+          </Badge>
+        </div>
+      </div>
+    );
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -664,6 +1260,9 @@ export function OpportunityDetailModal({
             Add Task
           </Button>
         </div>
+
+        {/* Intake Tasks Section - Always at the top */}
+        {renderIntakeTasksSection()}
 
         {/* Task Filter */}
         <div className="flex items-center gap-2">
@@ -826,14 +1425,195 @@ export function OpportunityDetailModal({
   );
   };
 
+  const renderIntakeTab = () => {
+    if (!opportunity) return null;
+
+    // Mock intake form data based on the selected form type
+    const getIntakeFormFields = () => {
+      switch (selectedIntakeForm) {
+        case "estate_planning":
+          return [
+            { label: "Practice Area", value: "Estate Planning" },
+            { label: "Goals", value: "Create/Update Estate Plan" },
+            { label: "Florida Resident", value: "Yes" },
+            { label: "Marital Status", value: "Married" },
+            { label: "Spouse Planning Together", value: "Yes" },
+            { label: "Has Children", value: "Yes" },
+            { label: "Has Existing Documents", value: "Yes" },
+            { label: "Documents", value: "Will, POA" },
+            { label: "Is Trust Funded", value: "No" },
+          ];
+        case "pbta":
+          return [
+            { label: "Practice Area", value: "PBTA" },
+            { label: "Decedent First Name", value: "" },
+            { label: "Decedent Last Name", value: "" },
+            { label: "Date of Death", value: "" },
+            { label: "Relationship to Decedent", value: "" },
+            { label: "Beneficiary Disagreements", value: "" },
+            { label: "Asset Ownership", value: "" },
+            { label: "Was there a Will", value: "" },
+            { label: "Access to Will", value: "" },
+          ];
+        case "medicaid":
+          return [
+            { label: "Practice Area", value: "Medicaid" },
+            { label: "Primary Concern", value: "" },
+            { label: "Assets Involved", value: "" },
+          ];
+        case "deed":
+          return [
+            { label: "Practice Area", value: "Deed" },
+            { label: "Deed Concern", value: "" },
+            { label: "Needs Trust Counsel", value: "" },
+          ];
+        case "doc_review":
+          return [
+            { label: "Practice Area", value: "Doc Review" },
+            { label: "Florida Resident", value: "" },
+            { label: "Legal Advice Sought", value: "" },
+            { label: "Recent Life Changes", value: "" },
+            { label: "Is Document Owner", value: "" },
+            { label: "Is Beneficiary/Trustee", value: "" },
+            { label: "Has POA", value: "" },
+            { label: "Documents to Review", value: "" },
+            { label: "Pending Litigation", value: "" },
+          ];
+        default:
+          return [
+            { label: "Practice Area", value: "General" },
+            { label: "Call Details", value: "" },
+            { label: "Referral Source", value: "" },
+          ];
+      }
+    };
+
+    const formFields = getIntakeFormFields();
+
+    return (
+      <div className="space-y-4">
+        {/* Form Dropdown */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-500">Intake Form</h3>
+          </div>
+          <Select value={selectedIntakeForm} onValueChange={setSelectedIntakeForm}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select intake form type" />
+            </SelectTrigger>
+            <SelectContent>
+              {intakeFormTypes.map((form) => (
+                <SelectItem key={form.id} value={form.id}>
+                  {form.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Intake Form Fields */}
+        <div className="border rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b">
+            <h4 className="font-medium text-gray-900">
+              {intakeFormTypes.find((f) => f.id === selectedIntakeForm)?.name || "Intake Form"}
+            </h4>
+            <Badge variant="outline" className="text-xs">
+              Draft
+            </Badge>
+          </div>
+
+          {/* Contact Info Section */}
+          <div className="space-y-3">
+            <h5 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              Contact Information
+            </h5>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500">First Name</label>
+                <Input
+                  defaultValue={opportunity.contact?.firstName || ""}
+                  placeholder="First name"
+                  className="mt-1 h-9"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Last Name</label>
+                <Input
+                  defaultValue={opportunity.contact?.lastName || ""}
+                  placeholder="Last name"
+                  className="mt-1 h-9"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Email</label>
+                <Input
+                  defaultValue={opportunity.contact?.email || ""}
+                  placeholder="email@example.com"
+                  className="mt-1 h-9"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Phone</label>
+                <Input
+                  defaultValue={opportunity.contact?.phone || ""}
+                  placeholder="(555) 555-5555"
+                  className="mt-1 h-9"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Practice Area Specific Fields */}
+          <div className="space-y-3 pt-3 border-t">
+            <h5 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              {intakeFormTypes.find((f) => f.id === selectedIntakeForm)?.name.replace(" Intake", "")} Details
+            </h5>
+            <div className="grid grid-cols-2 gap-3">
+              {formFields.map((field, index) => (
+                <div key={index}>
+                  <label className="text-xs text-gray-500">{field.label}</label>
+                  <Input
+                    defaultValue={field.value}
+                    placeholder={`Enter ${field.label.toLowerCase()}`}
+                    className="mt-1 h-9"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Call Details */}
+          <div className="space-y-3 pt-3 border-t">
+            <h5 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              Call Details
+            </h5>
+            <Textarea
+              placeholder="Enter details from the call..."
+              className="min-h-[80px] resize-none"
+            />
+          </div>
+
+          {/* Save Button */}
+          <div className="pt-3 border-t">
+            <Button className="w-full bg-brand hover:bg-brand/90">
+              Save Intake Form
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderContent = () => {
     switch (activeTab) {
       case "details":
         return renderDetailsTab();
-      case "messages":
-        return renderMessagesTab();
+      case "logs":
+        return renderLogsTab();
       case "tasks":
         return renderTasksTab();
+      case "intake":
+        return renderIntakeTab();
       case "documents":
         return renderDocumentsTab();
       default:
@@ -900,11 +1680,26 @@ export function OpportunityDetailModal({
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <div className="flex items-start justify-between pr-8">
             <div className="space-y-3">
-              <DialogTitle className="flex items-center gap-2 text-xl">
-                {opportunity.title}
-                <Button variant="ghost" size="icon" className="h-6 w-6">
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
+              <DialogTitle asChild>
+                <Input
+                  value={tempTitle}
+                  onChange={(e) => setTempTitle(e.target.value)}
+                  onBlur={async (e) => {
+                    if (e.target.value === opportunity.title) return;
+                    try {
+                      await updateOpportunity({
+                        id: opportunity._id,
+                        title: e.target.value,
+                      });
+                      toast.success("Title updated");
+                    } catch (error) {
+                      console.error("Failed to update title:", error);
+                      toast.error("Failed to update title");
+                    }
+                  }}
+                  className="text-xl font-semibold h-10 w-[350px] border-transparent hover:border-gray-200 focus:border-gray-300 bg-transparent"
+                  placeholder="Opportunity title"
+                />
               </DialogTitle>
               <div className="flex items-center gap-2">
                 <Select value={selectedPipeline} onValueChange={handlePipelineChange}>
@@ -933,6 +1728,18 @@ export function OpportunityDetailModal({
                 </Select>
               </div>
             </div>
+            {/* Did Not Hire Button */}
+            {selectedPipeline !== "Did Not Hire" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                onClick={() => setIsDidNotHireOpen(true)}
+              >
+                <XCircle className="h-4 w-4 mr-1.5" />
+                Did not Hire
+              </Button>
+            )}
           </div>
         </DialogHeader>
 
@@ -1046,6 +1853,85 @@ export function OpportunityDetailModal({
             if (!open) setSelectedInvoice(null);
           }}
         />
+
+        {/* Add Related Contact Modal */}
+        <AddRelatedContactModal
+          open={isAddRelatedContactOpen}
+          onOpenChange={setIsAddRelatedContactOpen}
+          opportunityId={opportunity._id}
+          primaryContactId={opportunity.contactId}
+          existingRelatedContactIds={opportunity.relatedContacts?.map((rc: { contactId: Id<"contacts"> }) => rc.contactId) || []}
+        />
+
+        {/* Did Not Hire Modal */}
+        <Dialog open={isDidNotHireOpen} onOpenChange={setIsDidNotHireOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <XCircle className="h-5 w-5" />
+                Mark as Did Not Hire
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {/* Closure Point Tag */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Point in Intake Closed
+                </label>
+                <Select value={didNotHireTag} onValueChange={setDidNotHireTag}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select closure point" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {closurePointTags.map((tag) => (
+                      <SelectItem key={tag.id} value={tag.id}>
+                        {tag.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Reason (Did Not Hire Stage) */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Reason
+                </label>
+                <Select value={didNotHireReason} onValueChange={setDidNotHireReason}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {didNotHireStages.map((stage: { _id: string; name: string }) => (
+                      <SelectItem key={stage._id} value={stage._id}>
+                        {stage.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsDidNotHireOpen(false);
+                  setDidNotHireTag("");
+                  setDidNotHireReason("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDidNotHireSubmit}
+                disabled={!didNotHireReason}
+              >
+                Confirm
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
           </>
         ) : null}
       </DialogContent>

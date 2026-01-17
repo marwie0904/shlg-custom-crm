@@ -1,400 +1,215 @@
 "use client";
 
-import { Suspense, useState, useMemo, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
-import { useQuery, useMutation } from "convex/react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Id } from "@/convex/_generated/dataModel";
-import {
-  DndContext,
-  DragOverlay,
-  closestCorners,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragEndEvent,
-  DragOverEvent,
-} from "@dnd-kit/core";
-import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { KanbanColumn } from "@/components/opportunities/KanbanColumn";
-import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
-import { OpportunityDetailModal } from "@/components/opportunities/OpportunityDetailModal";
-import { AddTaskModal, NewTaskData } from "@/components/tasks/AddTaskModal";
-import { Plus, CheckSquare, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  OpportunityForKanban,
-  Stage,
-  PipelineName,
-} from "@/lib/types/opportunities";
+import { Search, Plus, ChevronRight, DollarSign, User, Briefcase } from "lucide-react";
+import { format } from "date-fns";
 
-const pipelines: PipelineName[] = ["Main Lead Flow", "Did Not Hire"];
+const stageColors: Record<string, string> = {
+  "New Lead": "bg-blue-100 text-blue-700",
+  "Contacted": "bg-yellow-100 text-yellow-700",
+  "Qualified": "bg-purple-100 text-purple-700",
+  "Consultation Scheduled": "bg-indigo-100 text-indigo-700",
+  "Consultation Complete": "bg-cyan-100 text-cyan-700",
+  "Proposal Sent": "bg-orange-100 text-orange-700",
+  "Engaged": "bg-green-100 text-green-700",
+  "Did Not Hire": "bg-gray-100 text-gray-500",
+  "Lost": "bg-red-100 text-red-700",
+};
 
-export default function OpportunitiesPage() {
-  return (
-    <Suspense fallback={
-      <div className="flex flex-col h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-brand" />
-        <p className="mt-2 text-gray-500">Loading opportunities...</p>
-      </div>
-    }>
-      <OpportunitiesContent />
-    </Suspense>
-  );
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
-function OpportunitiesContent() {
-  const [selectedPipeline, setSelectedPipeline] =
-    useState<PipelineName>("Main Lead Flow");
-  const [activeOpportunity, setActiveOpportunity] =
-    useState<OpportunityForKanban | null>(null);
-  const [selectedOpportunityId, setSelectedOpportunityId] =
-    useState<Id<"opportunities"> | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+export default function OpportunitiesPage() {
+  const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Fetch pipeline stages from Convex
-  const stages = useQuery(api.pipelineStages.getByPipeline, {
-    pipeline: selectedPipeline,
-  });
+  // Fetch opportunities with contact data using Convex
+  const opportunities = useQuery(api.opportunities.listForKanban, { limit: 200 });
+  const stages = useQuery(api.pipelineStages.list, {});
 
-  // Fetch lightweight opportunities for Kanban board (only card data)
-  const opportunitiesData = useQuery(api.opportunities.listForKanban, {
-    pipelineId: selectedPipeline,
-  });
+  const isLoading = opportunities === undefined;
 
-  // Mutations
-  const moveToStage = useMutation(api.opportunities.moveToStage);
-  const updateOpportunity = useMutation(api.opportunities.update);
-  const createTask = useMutation(api.tasks.create);
+  // Create a map of stage IDs to stage names
+  const stageMap = new Map(stages?.map(s => [s._id, s.name]) || []);
 
-  const handleCreateTask = async (taskData: NewTaskData) => {
-    try {
-      await createTask({
-        title: taskData.title,
-        description: taskData.description || undefined,
-        dueDate: taskData.dueDate ? new Date(taskData.dueDate).getTime() : undefined,
-        assignedTo: taskData.assignedTo || undefined,
-        assignedToName: taskData.assignedToName || undefined,
-      });
-    } catch (error) {
-      console.error("Failed to create task:", error);
-    }
-  };
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  // Filter stages by selected pipeline (already sorted by API)
-  const filteredStages = useMemo(() => {
-    return (stages ?? []) as Stage[];
-  }, [stages]);
-
-  // Filter opportunities by selected pipeline
-  const filteredOpportunities = useMemo(() => {
-    return (opportunitiesData ?? []) as OpportunityForKanban[];
-  }, [opportunitiesData]);
-
-  // Calculate totals
-  const totalOpportunities = filteredOpportunities.length;
-  const totalValue = filteredOpportunities.reduce(
-    (sum, opp) => sum + opp.estimatedValue,
-    0
-  );
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  // Get opportunities for a specific stage (using stage _id as string)
-  const getOpportunitiesForStage = (stageId: string) => {
-    return filteredOpportunities.filter((opp) => opp.stageId === stageId);
-  };
-
-  // Find opportunity by ID
-  const findOpportunity = (id: string) => {
-    return filteredOpportunities.find((opp) => opp._id === id);
-  };
-
-  // Handle drag start
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const opportunity = findOpportunity(active.id as string);
-    if (opportunity) {
-      setActiveOpportunity(opportunity);
-    }
-  };
-
-  // Handle drag over (for visual feedback) - optimistic update
-  const handleDragOver = (event: DragOverEvent) => {
-    // Visual feedback is handled by DndKit's built-in styling
-    // We'll perform the actual mutation on drag end
-  };
-
-  // Handle drag end - persist change to Convex
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveOpportunity(null);
-
-    if (!over) return;
-
-    const activeId = active.id as string;
-    const overId = over.id as string;
-
-    // Find the active opportunity
-    const activeOpp = findOpportunity(activeId);
-    if (!activeOpp) return;
-
-    // Check if dropped on a column (stage)
-    const overStage = filteredStages.find((stage) => stage._id === overId);
-    if (overStage && activeOpp.stageId !== overId) {
-      try {
-        await moveToStage({
-          id: activeId as Id<"opportunities">,
-          stageId: overId,
-        });
-      } catch (error) {
-        console.error("Failed to move opportunity:", error);
-      }
-      return;
-    }
-
-    // Check if dropped on another opportunity
-    const overOpp = findOpportunity(overId);
-    if (overOpp && overOpp.stageId !== activeOpp.stageId) {
-      try {
-        await moveToStage({
-          id: activeId as Id<"opportunities">,
-          stageId: overOpp.stageId,
-        });
-      } catch (error) {
-        console.error("Failed to move opportunity:", error);
-      }
-    }
-  };
-
-  // Handle opportunity card click
-  const handleOpportunityClick = (opportunity: OpportunityForKanban) => {
-    setSelectedOpportunityId(opportunity._id);
-    setIsModalOpen(true);
-  };
-
-  // Handle opportunity update from modal
-  const handleOpportunityUpdate = async (updatedData: {
-    id: Id<"opportunities">;
-    notes?: string;
-    estimatedValue?: number;
-  }) => {
-    try {
-      await updateOpportunity({
-        id: updatedData.id,
-        notes: updatedData.notes,
-        estimatedValue: updatedData.estimatedValue,
-      });
-      // The UI will automatically update via Convex's reactive queries
-    } catch (error) {
-      console.error("Failed to update opportunity:", error);
-    }
-  };
-
-  // Handle URL params for deep-linking to specific opportunity
-  const searchParams = useSearchParams();
-
-  useEffect(() => {
-    const opportunityId = searchParams.get('id');
-    if (opportunityId) {
-      setSelectedOpportunityId(opportunityId as Id<"opportunities">);
-      setIsModalOpen(true);
-    }
-  }, [searchParams]);
-
-  // Loading state
-  const isLoading = stages === undefined || opportunitiesData === undefined;
-
-  if (isLoading) {
+  // Filter opportunities based on search query
+  const filteredOpportunities = opportunities?.filter((opp) => {
+    const query = searchQuery.toLowerCase();
+    const stageName = stageMap.get(opp.stageId) || "";
+    const contactName = opp.contact
+      ? `${opp.contact.firstName} ${opp.contact.lastName}`.toLowerCase()
+      : "";
     return (
-      <div className="flex flex-col h-full">
-        {/* Header Skeleton */}
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <Skeleton className="h-8 w-32 mb-2" />
-            <Skeleton className="h-4 w-48" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-9 w-24" />
-            <Skeleton className="h-9 w-36" />
-          </div>
-        </div>
-
-        {/* Pipeline Selector Skeleton */}
-        <div className="mb-6">
-          <Skeleton className="h-10 w-[220px]" />
-        </div>
-
-        {/* Kanban Board Skeleton */}
-        <div className="flex-1 overflow-hidden">
-          <div className="flex gap-4 pb-4 min-h-full">
-            {/* Skeleton Columns */}
-            {[1, 2, 3, 4, 5, 6].map((col) => (
-              <div
-                key={col}
-                className="flex flex-col min-w-[280px] w-[280px] rounded-lg bg-gray-50"
-              >
-                {/* Column Header Skeleton */}
-                <div className="p-3 border-b border-gray-200">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-2.5 w-2.5 rounded-full" />
-                      <Skeleton className="h-4 w-24" />
-                    </div>
-                    <Skeleton className="h-5 w-6 rounded" />
-                  </div>
-                  <Skeleton className="h-3 w-16 mt-1" />
-                </div>
-
-                {/* Column Cards Skeleton */}
-                <div className="p-2 space-y-2">
-                  {[1, 2, 3].slice(0, col % 3 + 1).map((card) => (
-                    <div
-                      key={card}
-                      className="bg-white rounded-lg border border-gray-200 p-3 space-y-2"
-                    >
-                      <div className="flex items-start justify-between">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-4 w-4 rounded-full" />
-                      </div>
-                      <Skeleton className="h-3 w-24" />
-                      <div className="flex items-center gap-2 pt-1">
-                        <Skeleton className="h-5 w-16 rounded-full" />
-                        <Skeleton className="h-3 w-12" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      opp.title.toLowerCase().includes(query) ||
+      stageName.toLowerCase().includes(query) ||
+      contactName.includes(query) ||
+      opp.practiceArea?.toLowerCase().includes(query) ||
+      opp.source?.toLowerCase().includes(query)
     );
-  }
+  }) || [];
+
+  const handleRowClick = (opportunityId: string) => {
+    router.push(`/opportunities/${opportunityId}`);
+  };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pipeline</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {totalOpportunities} opportunities &bull;{" "}
-            {formatCurrency(totalValue)} total value
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setIsAddTaskOpen(true)}>
-            <CheckSquare className="h-4 w-4" />
-            Add Task
-          </Button>
-          <Button className="bg-brand hover:bg-brand/90 text-white">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Opportunity
-          </Button>
-        </div>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Opportunities</h1>
+        <Button>
+          <Plus className="h-4 w-4 mr-2" />
+          New Opportunity
+        </Button>
       </div>
 
-      {/* Pipeline Selector */}
-      <div className="mb-6">
-        <Select
-          value={selectedPipeline}
-          onValueChange={(value) => setSelectedPipeline(value as PipelineName)}
-        >
-          <SelectTrigger className="w-[220px]">
-            <SelectValue placeholder="Select pipeline" />
-          </SelectTrigger>
-          <SelectContent>
-            {pipelines.map((pipeline) => (
-              <SelectItem key={pipeline} value={pipeline}>
-                {pipeline}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Search */}
+      <div className="relative w-80">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <Input
+          placeholder="Search opportunities..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-hidden">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <ScrollArea className="w-full h-full">
-            <div className="flex gap-4 pb-4 min-h-full">
-              {filteredStages.map((stage) => (
-                <KanbanColumn
-                  key={stage._id}
-                  stage={stage}
-                  opportunities={getOpportunitiesForStage(stage._id)}
-                  onOpportunityClick={handleOpportunityClick}
-                />
-              ))}
+      {/* Table */}
+      <div className="rounded-lg border bg-white shadow-sm">
+        {/* Loading Skeleton */}
+        {isLoading && (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b bg-gray-50/50">
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Opportunity</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Contact</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Stage</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Practice Area</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Value</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Created</th>
+                  <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {[...Array(5)].map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-32" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-28" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-24 rounded-full" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-24" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-20" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-20" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-5 w-5" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Table Content */}
+        {!isLoading && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-gray-50/50">
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Opportunity</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Contact</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Stage</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Practice Area</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Value</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Created</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredOpportunities.map((opp) => {
+                    const stageName = stageMap.get(opp.stageId) || opp.stageId;
+                    const contactName = opp.contact
+                      ? `${opp.contact.firstName} ${opp.contact.lastName}`
+                      : "—";
+                    return (
+                      <tr
+                        key={opp._id}
+                        onClick={() => handleRowClick(opp._id)}
+                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                      >
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-gray-900">{opp.title}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-gray-400" />
+                            <span className="text-sm text-gray-700">{contactName}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge className={`${stageColors[stageName] || "bg-gray-100 text-gray-700"} border-0`}>
+                            {stageName}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {opp.practiceArea ? (
+                            <div className="flex items-center gap-2">
+                              <Briefcase className="h-4 w-4 text-gray-400" />
+                              <span className="text-sm text-gray-700">{opp.practiceArea}</span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1 text-sm font-medium text-gray-900">
+                            <DollarSign className="h-4 w-4 text-gray-400" />
+                            {formatCurrency(opp.estimatedValue)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {opp.createdAt ? format(new Date(opp.createdAt), "MMM d, yyyy") : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <ChevronRight className="h-4 w-4 text-gray-400" />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            <ScrollBar orientation="horizontal" />
-          </ScrollArea>
 
-          <DragOverlay>
-            {activeOpportunity ? (
-              <div className="rotate-3">
-                <OpportunityCard opportunity={activeOpportunity} />
+            {/* Empty State */}
+            {filteredOpportunities.length === 0 && (
+              <div className="px-4 py-12 text-center">
+                <p className="text-sm text-gray-500">No opportunities found</p>
               </div>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+            )}
+
+            {/* Table Footer */}
+            <div className="border-t px-4 py-3 text-sm text-gray-500">
+              Showing {filteredOpportunities.length} of {opportunities?.length || 0} opportunities
+            </div>
+          </>
+        )}
       </div>
-
-      {/* Opportunity Detail Modal */}
-      <OpportunityDetailModal
-        opportunityId={selectedOpportunityId}
-        open={isModalOpen}
-        onOpenChange={(open) => {
-          setIsModalOpen(open);
-          if (!open) setSelectedOpportunityId(null);
-        }}
-        onUpdate={handleOpportunityUpdate}
-      />
-
-      {/* Add Task Modal */}
-      <AddTaskModal
-        open={isAddTaskOpen}
-        onOpenChange={setIsAddTaskOpen}
-        onCreateTask={handleCreateTask}
-      />
     </div>
   );
 }
