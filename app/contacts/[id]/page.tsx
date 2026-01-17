@@ -334,7 +334,23 @@ const tagColors: Record<string, string> = {
   "High Value": "bg-purple-100 text-purple-700 border-purple-200",
   "Follow Up": "bg-blue-100 text-blue-700 border-blue-200",
   Priority: "bg-orange-100 text-orange-700 border-orange-200",
+  "Contact Us": "bg-teal-100 text-teal-700 border-teal-200",
+  "Workshop": "bg-orange-100 text-orange-700 border-orange-200",
+  "Workshop Registration": "bg-orange-100 text-orange-700 border-orange-200",
 };
+
+// Helper to get tag color (checks for partial matches for dynamic tags like "Workshop Registration 09/24")
+function getTagColor(tag: string): string {
+  // First check exact match
+  if (tagColors[tag]) return tagColors[tag];
+
+  // Check partial matches for dynamic tags
+  if (tag.toLowerCase().includes("workshop")) return tagColors["Workshop"];
+  if (tag.toLowerCase().includes("contact us")) return tagColors["Contact Us"];
+
+  // Default
+  return "bg-gray-50 text-gray-600 border-gray-200";
+}
 
 const sourceColors: Record<string, string> = {
   Website: "bg-blue-500",
@@ -670,7 +686,7 @@ export default function ContactDetailPage() {
                   <Badge
                     key={tag}
                     variant="outline"
-                    className={`text-xs ${tagColors[tag] || "bg-gray-50 text-gray-600"}`}
+                    className={`text-xs ${getTagColor(tag)}`}
                   >
                     {tag}
                   </Badge>

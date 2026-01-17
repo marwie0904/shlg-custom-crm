@@ -160,6 +160,9 @@ export default defineSchema({
     primaryContactId: v.optional(v.id("contacts")), // Links sub-contact to their primary contact
     relationshipType: v.optional(v.string()), // "Spouse", "Child", "Parent", "Sibling", "Grandparent", "Grandchild", "Caregiver", "Power of Attorney", "Trustee", "Beneficiary", "Guardian", "Business Partner", "Other"
 
+    // Lead Status (for leads page review)
+    leadStatus: v.optional(v.string()), // "pending", "accepted", "ignored" - default is "pending" (or undefined)
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -173,7 +176,8 @@ export default defineSchema({
     .index("by_lastName", ["lastName"])
     .index("by_metaPsid", ["metaPsid"])
     .index("by_metaIgsid", ["metaIgsid"])
-    .index("by_primaryContactId", ["primaryContactId"]),
+    .index("by_primaryContactId", ["primaryContactId"])
+    .index("by_leadStatus", ["leadStatus"]),
 
   // ==========================================
   // PIPELINE STAGES
@@ -220,8 +224,9 @@ export default defineSchema({
     // Practice Area
     practiceArea: v.optional(v.string()), // "Estate Planning", "PBTA", "Medicaid", "Deed", "Doc Review", etc.
 
-    // Source
+    // Source & Tags
     source: v.optional(v.string()), // "Website", "Referral", "Workshop", "Social Media", "Messenger", "Instagram", etc.
+    tags: v.optional(v.array(v.string())), // Tags synced from contact or added directly
 
     // Responsible Attorney
     responsibleAttorneyId: v.optional(v.id("users")),
@@ -242,6 +247,14 @@ export default defineSchema({
     // GHL Integration
     ghlOpportunityId: v.optional(v.string()),
 
+    // Lead Status (for leads page review)
+    leadStatus: v.optional(v.string()), // "pending", "accepted", "ignored", "duplicate" - default is "pending" (or undefined)
+
+    // Duplicate Detection
+    duplicateOfContactId: v.optional(v.id("contacts")), // Reference to existing contact that matches
+    duplicateOfOpportunityId: v.optional(v.id("opportunities")), // Reference to existing opportunity that matches
+    duplicateMatchType: v.optional(v.string()), // "email", "phone", "both"
+
     // Metadata
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -253,7 +266,8 @@ export default defineSchema({
     .index("by_source", ["source"])
     .index("by_responsibleAttorneyId", ["responsibleAttorneyId"])
     .index("by_ghlOpportunityId", ["ghlOpportunityId"])
-    .index("by_createdAt", ["createdAt"]),
+    .index("by_createdAt", ["createdAt"])
+    .index("by_leadStatus", ["leadStatus"]),
 
   // ==========================================
   // CONVERSATIONS
@@ -312,6 +326,13 @@ export default defineSchema({
     contactId: v.optional(v.id("contacts")),
     opportunityId: v.optional(v.id("opportunities")),
     appointmentId: v.optional(v.id("appointments")),
+
+    // Lead Status (pending, accepted, ignored, duplicate)
+    leadStatus: v.optional(v.string()),
+
+    // Duplicate Detection
+    duplicateOfContactId: v.optional(v.id("contacts")), // Reference to existing contact that matches
+    duplicateMatchType: v.optional(v.string()), // "email", "phone", "both"
 
     // Basic Fields
     createPdf: v.optional(v.string()),
@@ -415,7 +436,8 @@ export default defineSchema({
     .index("by_appointmentId", ["appointmentId"])
     .index("by_practiceArea", ["practiceArea"])
     .index("by_status", ["status"])
-    .index("by_createdAt", ["createdAt"]),
+    .index("by_createdAt", ["createdAt"])
+    .index("by_leadStatus", ["leadStatus"]),
 
   // ==========================================
   // CALENDARS / APPOINTMENTS
@@ -850,4 +872,155 @@ export default defineSchema({
     .index("by_pageId", ["pageId"])
     .index("by_platform", ["platform"])
     .index("by_isActive", ["isActive"]),
+
+  // ==========================================
+  // FORM TEMPLATES (Drag & Drop Form Builder)
+  // ==========================================
+  formTemplates: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+
+    // Form Elements (stored as JSON structure)
+    elements: v.array(v.object({
+      id: v.string(), // Unique ID for the element
+      type: v.string(), // "text", "title", "separator", "column", "dropdown", "textInput", "largeTextInput", "singleSelect", "multipleSelect", "date", "location", "email", "phone", "number", "checkbox", "signature", "fileUpload"
+      label: v.optional(v.string()), // Label for input fields
+      placeholder: v.optional(v.string()), // Placeholder text
+      content: v.optional(v.string()), // For text/title elements
+      required: v.optional(v.boolean()), // Whether field is required
+      options: v.optional(v.array(v.string())), // For dropdown/select fields
+      width: v.optional(v.string()), // "full", "half", "third" for column layouts
+      order: v.number(), // Position in form
+
+      // Column-specific fields
+      columnCount: v.optional(v.number()), // Number of columns (2, 3, 4)
+      children: v.optional(v.array(v.string())), // Child element IDs for columns
+      parentId: v.optional(v.string()), // Parent column ID
+      columnIndex: v.optional(v.number()), // Which column this element belongs to (0, 1, 2, etc.)
+
+      // Validation
+      minLength: v.optional(v.number()),
+      maxLength: v.optional(v.number()),
+      pattern: v.optional(v.string()), // Regex pattern for validation
+
+      // Styling
+      size: v.optional(v.string()), // "sm", "md", "lg" for text sizes
+      alignment: v.optional(v.string()), // "left", "center", "right"
+    })),
+
+    // Public Form Settings
+    isPublic: v.boolean(),
+    publicSlug: v.optional(v.string()), // URL-friendly slug for public access
+
+    // Submission Settings
+    submitButtonText: v.optional(v.string()), // Default: "Submit"
+    confirmationMessage: v.optional(v.string()), // Message shown after submission
+    redirectUrl: v.optional(v.string()), // Optional redirect after submission
+
+    // Notifications
+    notifyOnSubmission: v.optional(v.boolean()),
+    notificationEmails: v.optional(v.array(v.string())),
+
+    // Status
+    status: v.string(), // "draft", "active", "archived"
+
+    // Usage tracking
+    submissionCount: v.optional(v.number()),
+    lastSubmissionAt: v.optional(v.number()),
+
+    // Created by
+    createdByUserId: v.optional(v.id("users")),
+    createdByName: v.optional(v.string()),
+
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status", ["status"])
+    .index("by_isPublic", ["isPublic"])
+    .index("by_publicSlug", ["publicSlug"])
+    .index("by_createdByUserId", ["createdByUserId"])
+    .index("by_createdAt", ["createdAt"]),
+
+  // ==========================================
+  // FORM SUBMISSIONS (Filled Form Data)
+  // ==========================================
+  formSubmissions: defineTable({
+    formTemplateId: v.id("formTemplates"),
+
+    // Link to CRM entities (optional)
+    contactId: v.optional(v.id("contacts")),
+    opportunityId: v.optional(v.id("opportunities")),
+
+    // Submission Data (key-value pairs where key is element ID)
+    data: v.object({}), // Dynamic object with element IDs as keys
+
+    // Submitter Info
+    submitterEmail: v.optional(v.string()),
+    submitterName: v.optional(v.string()),
+    submitterPhone: v.optional(v.string()),
+    submitterIp: v.optional(v.string()),
+
+    // Status
+    status: v.string(), // "pending", "reviewed", "processed", "archived"
+
+    // Review info
+    reviewedByUserId: v.optional(v.id("users")),
+    reviewedByName: v.optional(v.string()),
+    reviewedAt: v.optional(v.number()),
+    reviewNotes: v.optional(v.string()),
+
+    // Due date (for forms sent to specific contacts)
+    dueDate: v.optional(v.number()),
+
+    // Metadata
+    submittedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_formTemplateId", ["formTemplateId"])
+    .index("by_contactId", ["contactId"])
+    .index("by_opportunityId", ["opportunityId"])
+    .index("by_status", ["status"])
+    .index("by_submittedAt", ["submittedAt"])
+    .index("by_dueDate", ["dueDate"]),
+
+  // ==========================================
+  // FORM ASSIGNMENTS (Forms sent to contacts)
+  // ==========================================
+  formAssignments: defineTable({
+    formTemplateId: v.id("formTemplates"),
+    contactId: v.id("contacts"),
+    opportunityId: v.optional(v.id("opportunities")),
+
+    // Assignment details
+    assignedByUserId: v.optional(v.id("users")),
+    assignedByName: v.optional(v.string()),
+
+    // Due date
+    dueDate: v.optional(v.number()),
+
+    // Access token for unique form link
+    accessToken: v.string(),
+
+    // Status
+    status: v.string(), // "pending", "submitted", "expired", "cancelled"
+
+    // Submission reference
+    submissionId: v.optional(v.id("formSubmissions")),
+
+    // Reminder tracking
+    lastReminderSentAt: v.optional(v.number()),
+    reminderCount: v.optional(v.number()),
+
+    // Metadata
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_formTemplateId", ["formTemplateId"])
+    .index("by_contactId", ["contactId"])
+    .index("by_opportunityId", ["opportunityId"])
+    .index("by_accessToken", ["accessToken"])
+    .index("by_status", ["status"])
+    .index("by_dueDate", ["dueDate"])
+    .index("by_createdAt", ["createdAt"]),
 });
