@@ -152,7 +152,14 @@ export function OpportunityDetailModal({
   // Check if contact has Messenger or Instagram conversation
   const messengerConversation = contactConversations?.find(c => c.source === "messenger");
   const instagramConversation = contactConversations?.find(c => c.source === "instagram");
-  const hasMessagingConversation = messengerConversation || instagramConversation;
+  const socialConversation = messengerConversation || instagramConversation;
+  const hasMessagingConversation = !!socialConversation;
+
+  // Fetch messages for the social conversation (limit to 3 most recent)
+  const conversationMessages = useQuery(
+    api.conversations.getMessages,
+    socialConversation?._id ? { conversationId: socialConversation._id, limit: 3 } : "skip"
+  );
 
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [editingValue, setEditingValue] = useState(false);
@@ -920,6 +927,78 @@ export function OpportunityDetailModal({
           )}
         </div>
       </div>
+
+      {/* Conversation History (for Messenger/Instagram leads) or Notes */}
+      {hasMessagingConversation ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+              {socialConversation?.source === "messenger" ? (
+                <Facebook className="h-4 w-4 text-[#0084ff]" />
+              ) : (
+                <Instagram className="h-4 w-4 text-[#E4405F]" />
+              )}
+              <span>Conversation History</span>
+            </div>
+            <Link
+              href="/conversations"
+              className="text-xs text-brand hover:text-brand/80 flex items-center gap-1 transition-colors"
+            >
+              View All Messages
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+            {conversationMessages && conversationMessages.length > 0 ? (
+              <>
+                {conversationMessages.map((msg) => (
+                  <div
+                    key={msg._id}
+                    className={`flex ${msg.isOutgoing ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-2xl px-3 py-2 ${
+                        msg.isOutgoing
+                          ? socialConversation?.source === "messenger"
+                            ? "bg-[#0084ff] text-white"
+                            : "bg-[#E4405F] text-white"
+                          : "bg-white border border-gray-200 text-gray-900"
+                      }`}
+                    >
+                      <p className="text-sm">{msg.content}</p>
+                      <p className={`text-xs mt-1 ${msg.isOutgoing ? "text-white/70" : "text-gray-400"}`}>
+                        {format(new Date(msg.timestamp), "MMM d, h:mm a")}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {conversationMessages.length === 3 && (
+                  <p className="text-xs text-center text-gray-400">
+                    Showing most recent 3 messages
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 text-center">No messages yet</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-500">
+            <StickyNote className="h-4 w-4" />
+            <span>Notes</span>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <Textarea
+              value={tempNotes}
+              onChange={(e) => setTempNotes(e.target.value)}
+              placeholder="Add notes about this lead..."
+              className="min-h-[100px] bg-white"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
   };
