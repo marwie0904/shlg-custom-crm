@@ -45,6 +45,9 @@ export async function GET(request: NextRequest) {
     // Instagram
     "instagram_basic",
     "instagram_manage_messages",
+
+    // Business (needed if pages are owned by Business Manager)
+    "business_management",
   ].join(",");
 
   // Build the Facebook OAuth URL
