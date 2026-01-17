@@ -122,10 +122,16 @@ export async function GET(request: NextRequest) {
     }
 
     // 7. Get user's Facebook Pages
-    const pagesResponse = await fetch(
-      `${GRAPH_API_BASE}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${userAccessToken}`
-    );
+    console.log("[Meta OAuth] Fetching pages with token:", userAccessToken.substring(0, 20) + "...");
+
+    const pagesUrl = `${GRAPH_API_BASE}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${userAccessToken}`;
+    console.log("[Meta OAuth] Pages URL:", pagesUrl.replace(userAccessToken, "TOKEN_HIDDEN"));
+
+    const pagesResponse = await fetch(pagesUrl);
     const pagesData = await pagesResponse.json();
+
+    console.log("[Meta OAuth] Pages API response status:", pagesResponse.status);
+    console.log("[Meta OAuth] Pages response:", JSON.stringify(pagesData, null, 2));
 
     if (!pagesResponse.ok || pagesData.error) {
       console.error("[Meta OAuth] Pages fetch error:", pagesData);
@@ -133,8 +139,6 @@ export async function GET(request: NextRequest) {
     }
 
     const pages: FacebookPage[] = pagesData.data || [];
-
-    console.log("[Meta OAuth] Pages response:", JSON.stringify(pagesData, null, 2));
     console.log("[Meta OAuth] Found pages:", pages.length);
 
     if (pages.length === 0) {
