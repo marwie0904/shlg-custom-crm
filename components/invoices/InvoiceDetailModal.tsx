@@ -137,19 +137,19 @@ export function InvoiceDetailModal({
 
   // Fetch related data (skip in mock mode)
   const convexContact = useQuery(
-    USE_MOCK_DATA ? "skip" : api.contacts.getById,
+    api.contacts.getById,
     USE_MOCK_DATA ? "skip" : (invoice ? { id: invoice.contactId } : "skip")
   );
   const convexOpportunity = useQuery(
-    USE_MOCK_DATA ? "skip" : api.opportunities.getById,
+    api.opportunities.getById,
     USE_MOCK_DATA ? "skip" : (invoice?.opportunityId ? { id: invoice.opportunityId } : "skip")
   );
   const convexProducts = useQuery(
-    USE_MOCK_DATA ? "skip" : api.products.list,
+    api.products.list,
     USE_MOCK_DATA ? "skip" : { activeOnly: true }
   );
   const invoiceDocument = useQuery(
-    USE_MOCK_DATA ? "skip" : api.documents.getByInvoiceIdWithUrl,
+    api.documents.getByInvoiceIdWithUrl,
     USE_MOCK_DATA ? "skip" : (invoice ? { invoiceId: invoice._id } : "skip")
   );
 

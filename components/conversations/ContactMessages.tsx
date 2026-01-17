@@ -60,13 +60,13 @@ export function ContactMessages({ contactId, className }: ContactMessagesProps) 
 
   // Fetch conversations for this contact (skip in mock mode)
   const conversations = useQuery(
-    USE_MOCK_DATA ? "skip" : api.conversations.getByContactId,
+    api.conversations.getByContactId,
     USE_MOCK_DATA ? "skip" : { contactId }
   );
 
   // Fetch messages for selected conversation (skip in mock mode)
   const conversationWithMessages = useQuery(
-    USE_MOCK_DATA ? "skip" : api.conversations.getWithMessages,
+    api.conversations.getWithMessages,
     USE_MOCK_DATA ? "skip" : (selectedConversationId ? { id: selectedConversationId } : "skip")
   );
 

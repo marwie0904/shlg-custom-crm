@@ -138,11 +138,11 @@ export function AddAppointmentModal({
 
   // Fetch users and contacts from Convex (skip in mock mode)
   const convexUsers = useQuery(
-    USE_MOCK_DATA ? "skip" : api.users.list,
+    api.users.list,
     USE_MOCK_DATA ? "skip" : undefined
   );
   const convexContacts = useQuery(
-    USE_MOCK_DATA ? "skip" : api.contacts.list,
+    api.contacts.list,
     USE_MOCK_DATA ? "skip" : { limit: 100 }
   );
 

@@ -143,7 +143,7 @@ export function WorkshopDetailModal({
 
   // Fetch workshop with details (skip in mock mode)
   const convexWorkshop = useQuery(
-    USE_MOCK_DATA ? "skip" : api.workshops.getWithDetails,
+    api.workshops.getWithDetails,
     USE_MOCK_DATA ? "skip" : (workshopId ? { id: workshopId } : "skip")
   ) as WorkshopWithDetails | null | undefined;
 

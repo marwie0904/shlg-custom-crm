@@ -48,7 +48,7 @@ export default function WorkshopsPage() {
   // Use mock data or real Convex data based on environment
   const mockWorkshopsList = useMockWorkshops();
   const convexWorkshops = useQuery(
-    USE_MOCK_DATA ? "skip" : api.workshops.list,
+    api.workshops.list,
     USE_MOCK_DATA ? "skip" : {}
   );
 

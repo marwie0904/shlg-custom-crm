@@ -77,7 +77,7 @@ export default function InvoicesPage() {
   // Use mock data or real Convex data based on environment
   const mockInvoices = useMockInvoices({ limit: 100 });
   const convexInvoices = useQuery(
-    USE_MOCK_DATA ? "skip" : api.invoices.list,
+    api.invoices.list,
     USE_MOCK_DATA ? "skip" : { limit: 100 }
   );
 

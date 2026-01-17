@@ -74,11 +74,11 @@ export function AddTaskModal({
 
   // Only fetch contacts and opportunities if we need to show the dropdowns (skip in mock mode)
   const convexContacts = useQuery(
-    USE_MOCK_DATA ? "skip" : api.contacts.list,
+    api.contacts.list,
     USE_MOCK_DATA ? "skip" : (hideLinkedFields ? "skip" : { limit: 100 })
   );
   const convexOpportunities = useQuery(
-    USE_MOCK_DATA ? "skip" : api.opportunities.list,
+    api.opportunities.list,
     USE_MOCK_DATA ? "skip" : (hideLinkedFields ? "skip" : { limit: 100 })
   );
 

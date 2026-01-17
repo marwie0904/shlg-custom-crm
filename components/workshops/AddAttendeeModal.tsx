@@ -41,7 +41,7 @@ export function AddAttendeeModal({
 
   // Search contacts (skip in mock mode)
   const convexSearchResults = useQuery(
-    USE_MOCK_DATA ? "skip" : api.contacts.search,
+    api.contacts.search,
     USE_MOCK_DATA ? "skip" : (searchQuery.length >= 2 ? { query: searchQuery } : "skip")
   );
 

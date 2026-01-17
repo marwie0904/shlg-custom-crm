@@ -286,7 +286,7 @@ export default function TasksPage() {
 
   // Fetch tasks from Convex (or skip if mock mode)
   const convexTasks = useQuery(
-    USE_MOCK_DATA ? "skip" : api.tasks.listWithRelated,
+    api.tasks.listWithRelated,
     USE_MOCK_DATA ? "skip" : {}
   ) as TaskWithRelated[] | undefined;
 

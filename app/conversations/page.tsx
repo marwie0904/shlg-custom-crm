@@ -517,7 +517,7 @@ export default function ConversationsPage() {
 
   // Fetch conversations filtered by SMS and Email only (skip in mock mode)
   const convexConversations = useQuery(
-    USE_MOCK_DATA ? "skip" : api.conversations.list,
+    api.conversations.list,
     USE_MOCK_DATA ? "skip" : {}
   );
 
@@ -529,7 +529,7 @@ export default function ConversationsPage() {
 
   // Fetch selected conversation with messages (skip in mock mode)
   const convexSelectedConversation = useQuery(
-    USE_MOCK_DATA ? "skip" : api.conversations.getWithMessages,
+    api.conversations.getWithMessages,
     USE_MOCK_DATA ? "skip" : (selectedConversationId ? { id: selectedConversationId } : "skip")
   );
 

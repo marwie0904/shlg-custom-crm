@@ -60,19 +60,19 @@ export function AddInvoiceModal({
 
   // Queries (skip in mock mode)
   const convexContacts = useQuery(
-    USE_MOCK_DATA ? "skip" : api.contacts.list,
+    api.contacts.list,
     USE_MOCK_DATA ? "skip" : { limit: 100 }
   );
   const convexOpportunities = useQuery(
-    USE_MOCK_DATA ? "skip" : api.opportunities.list,
+    api.opportunities.list,
     USE_MOCK_DATA ? "skip" : { limit: 100 }
   );
   const convexProducts = useQuery(
-    USE_MOCK_DATA ? "skip" : api.products.list,
+    api.products.list,
     USE_MOCK_DATA ? "skip" : { activeOnly: true }
   );
   const convexNextInvoiceNumber = useQuery(
-    USE_MOCK_DATA ? "skip" : api.invoices.getNextInvoiceNumber,
+    api.invoices.getNextInvoiceNumber,
     USE_MOCK_DATA ? "skip" : {}
   );
 

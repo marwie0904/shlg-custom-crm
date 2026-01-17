@@ -62,7 +62,7 @@ export default function CalendarsPage() {
   // Use mock data or real Convex data based on environment
   const mockAppointments = useMockAppointments({ limit: 500 });
   const convexAppointments = useQuery(
-    USE_MOCK_DATA ? "skip" : api.appointments.list,
+    api.appointments.list,
     USE_MOCK_DATA ? "skip" : { limit: 500 }
   );
 
