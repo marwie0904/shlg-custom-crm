@@ -62,6 +62,9 @@ import {
   MapPin,
   Check,
   X,
+  MessageSquare,
+  Facebook,
+  Instagram,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -139,6 +142,17 @@ export function OpportunityDetailModal({
     api.opportunities.getWithRelated,
     opportunityId ? { id: opportunityId } : "skip"
   ) as OpportunityWithRelated | null | undefined;
+
+  // Fetch conversations for this contact (for Messenger/Instagram leads)
+  const contactConversations = useQuery(
+    api.conversations.getByContactId,
+    opportunity?.contactId ? { contactId: opportunity.contactId } : "skip"
+  );
+
+  // Check if contact has Messenger or Instagram conversation
+  const messengerConversation = contactConversations?.find(c => c.source === "messenger");
+  const instagramConversation = contactConversations?.find(c => c.source === "instagram");
+  const hasMessagingConversation = messengerConversation || instagramConversation;
 
   const [activeTab, setActiveTab] = useState<TabType>("details");
   const [editingValue, setEditingValue] = useState(false);
@@ -522,14 +536,33 @@ export function OpportunityDetailModal({
             <User className="h-4 w-4" />
             <span>Contact</span>
           </div>
-          <Link
-            href={`/contacts/${opportunity.contactId}`}
-            target="_blank"
-            className="text-xs text-brand hover:text-brand/80 flex items-center gap-1 transition-colors"
-          >
-            View Full Profile
-            <ExternalLink className="h-3 w-3" />
-          </Link>
+          <div className="flex items-center gap-3">
+            {hasMessagingConversation && (
+              <Link
+                href="/conversations"
+                className={`text-xs flex items-center gap-1 transition-colors ${
+                  messengerConversation
+                    ? "text-[#0084ff] hover:text-[#0084ff]/80"
+                    : "text-[#E4405F] hover:text-[#E4405F]/80"
+                }`}
+              >
+                {messengerConversation ? (
+                  <Facebook className="h-3 w-3" />
+                ) : (
+                  <Instagram className="h-3 w-3" />
+                )}
+                View Messages
+              </Link>
+            )}
+            <Link
+              href={`/contacts/${opportunity.contactId}`}
+              target="_blank"
+              className="text-xs text-brand hover:text-brand/80 flex items-center gap-1 transition-colors"
+            >
+              View Full Profile
+              <ExternalLink className="h-3 w-3" />
+            </Link>
+          </div>
         </div>
         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">

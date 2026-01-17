@@ -23,7 +23,9 @@ import {
   User,
   Search,
   MoreVertical,
-  Loader2
+  Loader2,
+  Facebook,
+  Instagram
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -88,6 +90,10 @@ function getSourceIcon(source: string, className?: string) {
       return <MessageSquare className={cn("text-green-500", className)} />;
     case "email":
       return <Mail className={cn("text-blue-500", className)} />;
+    case "messenger":
+      return <Facebook className={cn("text-[#0084ff]", className)} />;
+    case "instagram":
+      return <Instagram className={cn("text-[#E4405F]", className)} />;
     default:
       return <MessageSquare className={cn("text-gray-400", className)} />;
   }
@@ -99,6 +105,10 @@ function getSourceLabel(source: string) {
       return "SMS";
     case "email":
       return "Email";
+    case "messenger":
+      return "Messenger";
+    case "instagram":
+      return "Instagram";
     default:
       return source;
   }
@@ -134,14 +144,14 @@ function ConversationList({
       <div className="flex h-full flex-col border-r bg-white">
         <div className="border-b p-4">
           <h2 className="text-lg font-semibold text-gray-900">Communications</h2>
-          <p className="text-xs text-gray-500 mt-1">Email & SMS Messages</p>
+          <p className="text-xs text-gray-500 mt-1">All Messages</p>
         </div>
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="text-center">
             <MessageSquare className="mx-auto size-12 text-gray-300 mb-3" />
             <p className="text-sm text-gray-500">No conversations yet</p>
             <p className="text-xs text-gray-400 mt-1">
-              Email and SMS messages will appear here
+              Messages from all channels will appear here
             </p>
           </div>
         </div>
@@ -154,7 +164,7 @@ function ConversationList({
       {/* Header */}
       <div className="border-b p-4">
         <h2 className="text-lg font-semibold text-gray-900">Communications</h2>
-        <p className="text-xs text-gray-500 mt-1">Email & SMS Messages</p>
+        <p className="text-xs text-gray-500 mt-1">All Messages</p>
       </div>
 
       {/* Search */}
@@ -386,8 +396,38 @@ function MessageWindow({
                 (prevMsgDate && format(prevMsgDate, "yyyy-MM-dd") !== format(msgDate, "yyyy-MM-dd"));
 
               // Determine message style based on source
-              const isSms = conversation.source === "sms";
-              const isEmail = conversation.source === "email";
+              const source = conversation.source;
+
+              // Get bubble colors based on source
+              const getBubbleClasses = () => {
+                if (msg.isOutgoing) {
+                  switch (source) {
+                    case "sms": return "bg-green-500 text-white";
+                    case "messenger": return "bg-[#0084ff] text-white";
+                    case "instagram": return "bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] text-white";
+                    default: return "bg-[#012f66] text-white";
+                  }
+                } else {
+                  switch (source) {
+                    case "sms": return "bg-green-100 text-gray-900 border border-green-200";
+                    case "messenger": return "bg-[#e4e6eb] text-gray-900";
+                    case "instagram": return "bg-gray-100 text-gray-900 border border-pink-200";
+                    default: return "bg-gray-100 text-gray-900";
+                  }
+                }
+              };
+
+              const getTimestampClasses = () => {
+                if (msg.isOutgoing) {
+                  switch (source) {
+                    case "sms": return "text-green-200";
+                    case "messenger": return "text-blue-200";
+                    case "instagram": return "text-white/70";
+                    default: return "text-blue-200";
+                  }
+                }
+                return "text-gray-500";
+              };
 
               return (
                 <div key={msg._id}>
@@ -419,42 +459,16 @@ function MessageWindow({
                     <div className="max-w-[70%] flex flex-col gap-1">
                       {/* Source indicator badge */}
                       <div className={cn("flex items-center gap-1", msg.isOutgoing ? "justify-end" : "justify-start")}>
-                        {isSms && (
-                          <span className="text-[10px] text-green-600 flex items-center gap-0.5">
-                            <MessageSquare className="size-2.5" />
-                            SMS
-                          </span>
-                        )}
-                        {isEmail && (
-                          <span className="text-[10px] text-blue-600 flex items-center gap-0.5">
-                            <Mail className="size-2.5" />
-                            Email
-                          </span>
-                        )}
+                        <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
+                          {getSourceIcon(source, "size-2.5")}
+                          {getSourceLabel(source)}
+                        </span>
                       </div>
 
                       {/* Message bubble */}
-                      <div
-                        className={cn(
-                          "rounded-2xl px-4 py-2",
-                          msg.isOutgoing
-                            ? isSms
-                              ? "bg-green-500 text-white" // Outgoing SMS - green
-                              : "bg-[#012f66] text-white" // Outgoing Email - blue
-                            : isSms
-                              ? "bg-green-100 text-gray-900 border border-green-200" // Incoming SMS - light green
-                              : "bg-gray-100 text-gray-900" // Incoming Email - gray
-                        )}
-                      >
+                      <div className={cn("rounded-2xl px-4 py-2", getBubbleClasses())}>
                         <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                        <p
-                          className={cn(
-                            "mt-1 text-xs",
-                            msg.isOutgoing
-                              ? isSms ? "text-green-200" : "text-blue-200"
-                              : "text-gray-500"
-                          )}
-                        >
+                        <p className={cn("mt-1 text-xs", getTimestampClasses())}>
                           {format(msgDate, "h:mm a")}
                         </p>
                       </div>
@@ -484,9 +498,10 @@ function MessageWindow({
             disabled={!message.trim() || isSending}
             className={cn(
               "shrink-0",
-              conversation.source === "sms"
-                ? "bg-green-500 hover:bg-green-600"
-                : "bg-[#012f66] hover:bg-[#012f66]/90"
+              conversation.source === "sms" && "bg-green-500 hover:bg-green-600",
+              conversation.source === "messenger" && "bg-[#0084ff] hover:bg-[#0084ff]/90",
+              conversation.source === "instagram" && "bg-[#E4405F] hover:bg-[#E4405F]/90",
+              conversation.source === "email" && "bg-[#012f66] hover:bg-[#012f66]/90"
             )}
           >
             {isSending ? (
@@ -497,7 +512,10 @@ function MessageWindow({
           </Button>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          Sending as {getSourceLabel(conversation.source)} to {conversation.source === "sms" ? contact.phone : contact.email}
+          Sending via {getSourceLabel(conversation.source)}
+          {(conversation.source === "messenger" || conversation.source === "instagram") && " to this contact"}
+          {conversation.source === "sms" && contact.phone && ` to ${contact.phone}`}
+          {conversation.source === "email" && contact.email && ` to ${contact.email}`}
         </p>
       </div>
     </div>
@@ -521,11 +539,9 @@ export default function ConversationsPage() {
     USE_MOCK_DATA ? "skip" : {}
   );
 
-  // Filter to only show SMS and Email conversations
+  // Show all conversations (SMS, Email, Messenger, Instagram)
   const allConversations = USE_MOCK_DATA ? mockConversationsList : convexConversations;
-  const conversations = ((allConversations || []).filter(
-    (conv) => conv.source === "sms" || conv.source === "email"
-  )) as Conversation[];
+  const conversations = (allConversations || []) as Conversation[];
 
   // Fetch selected conversation with messages (skip in mock mode)
   const convexSelectedConversation = useQuery(
