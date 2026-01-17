@@ -51,7 +51,6 @@ import {
   FileEdit,
   FilePlus,
   ChevronDown,
-  Building2,
   Cake,
   History,
   StickyNote,
@@ -696,12 +695,6 @@ export default function OpportunityDetailPage() {
                     </div>
                   )}
 
-                  {contact.company && (
-                    <div className="flex items-center gap-3">
-                      <Building2 className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-gray-600">{contact.company}</span>
-                    </div>
-                  )}
                 </div>
               </div>
             ) : (

@@ -56,7 +56,7 @@ import { format } from "date-fns";
 import Link from "next/link";
 
 interface LineItem {
-  productId?: Id<"products">;
+  productId?: Id<"products"> | string;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -252,7 +252,10 @@ export function InvoiceDetailModal({
         notes: notes || undefined,
         status,
         amount: calculatedTotal || invoice.amount,
-        lineItems: lineItems.length > 0 ? lineItems : undefined,
+        lineItems: lineItems.length > 0 ? lineItems.map(item => ({
+          ...item,
+          productId: item.productId as Id<"products"> | undefined,
+        })) : undefined,
       });
       setIsEditing(false);
     } catch (error) {

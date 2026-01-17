@@ -29,7 +29,7 @@ import { Loader2, Plus, Trash2, DollarSign, User, Briefcase, Download, CheckCirc
 import { generateInvoicePdf, generateInvoicePdfFilename, InvoicePdfData } from "@/lib/services/pdfService";
 
 interface LineItem {
-  productId?: Id<"products">;
+  productId?: Id<"products"> | string;
   description: string;
   quantity: number;
   unitPrice: number;
@@ -41,7 +41,7 @@ interface AddInvoiceModalProps {
   onOpenChange: (open: boolean) => void;
   defaultContactId?: Id<"contacts">;
   defaultOpportunityId?: Id<"opportunities">;
-  onSuccess?: (invoiceId: Id<"invoices">) => void;
+  onSuccess?: (invoiceId: Id<"invoices"> | string) => void;
 }
 
 export function AddInvoiceModal({
@@ -53,7 +53,7 @@ export function AddInvoiceModal({
 }: AddInvoiceModalProps) {
   // Use mock data or real Convex data based on environment
   const mockContacts = useMockContacts({ limit: 100 });
-  const mockOpportunities = useMockOpportunities({ limit: 100 });
+  const mockOpportunities = useMockOpportunities({});
   const mockProducts = useMockProducts({ activeOnly: true });
   const mockNextInvoiceNumber = useMockNextInvoiceNumber();
   const mockMutation = useMockMutation();
@@ -105,7 +105,7 @@ export function AddInvoiceModal({
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdInvoice, setCreatedInvoice] = useState<{
-    id: Id<"invoices">;
+    id: Id<"invoices"> | string;
     invoiceNumber: string;
     pdfBlob: Blob;
     contactName: string;
@@ -288,7 +288,7 @@ export function AddInvoiceModal({
         dueDate: dueDateTimestamp,
         status: sendToConfido ? "Pending" : status,
         lineItems: lineItems.map((item) => ({
-          productId: item.productId,
+          productId: item.productId as Id<"products"> | undefined,
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -320,11 +320,11 @@ export function AddInvoiceModal({
 
         const confidoResult = await confidoResponse.json();
 
-        if (confidoResult.success) {
+        if (confidoResult.success && typeof invoiceId === "string") {
           paymentLink = confidoResult.paymentUrl;
           // Update invoice with Confido info
           await updateConfidoInfo({
-            id: invoiceId,
+            id: invoiceId as Id<"invoices">,
             confidoInvoiceId: confidoResult.confidoInvoiceId,
             confidoClientId: confidoResult.confidoClientId,
             confidoMatterId: confidoResult.confidoMatterId,
@@ -366,34 +366,42 @@ export function AddInvoiceModal({
       };
 
       const pdfBlob = generateInvoicePdf(pdfData);
-
-      // Upload PDF to Convex storage
-      const uploadUrl = await generateUploadUrl();
-      const uploadResult = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/pdf" },
-        body: pdfBlob,
-      });
-      const { storageId } = await uploadResult.json();
-
-      // Create document record
       const filename = generateInvoicePdfFilename(invoiceNumber, contactName);
-      const documentId = await createDocumentForInvoice({
-        invoiceId,
-        contactId: contactId as Id<"contacts">,
-        opportunityId: opportunityId ? (opportunityId as Id<"opportunities">) : undefined,
-        name: filename,
-        type: "pdf",
-        mimeType: "application/pdf",
-        size: pdfBlob.size,
-        storageId,
-      });
 
-      // Link document to invoice
-      await updateDocumentId({
-        id: invoiceId,
-        documentId,
-      });
+      // Skip PDF upload in mock mode
+      if (typeof invoiceId === "string") {
+        // Upload PDF to Convex storage
+        const uploadUrl = await generateUploadUrl();
+        if (typeof uploadUrl !== "string") {
+          throw new Error("Failed to get upload URL");
+        }
+        const uploadResult = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/pdf" },
+          body: pdfBlob,
+        });
+        const { storageId } = await uploadResult.json();
+
+        // Create document record
+        const documentId = await createDocumentForInvoice({
+          invoiceId: invoiceId as Id<"invoices">,
+          contactId: contactId as Id<"contacts">,
+          opportunityId: opportunityId ? (opportunityId as Id<"opportunities">) : undefined,
+          name: filename,
+          type: "pdf",
+          mimeType: "application/pdf",
+          size: pdfBlob.size,
+          storageId,
+        });
+
+        // Link document to invoice (skip in mock mode)
+        if (typeof documentId === "string") {
+          await updateDocumentId({
+            id: invoiceId as Id<"invoices">,
+            documentId: documentId as Id<"documents">,
+          });
+        }
+      }
 
       // Send invoice email if sending to Confido and contact has email
       if (sendToConfido && selectedContact?.email) {
@@ -450,15 +458,16 @@ export function AddInvoiceModal({
         }
       }
 
-      // Set created invoice for success screen
-      setCreatedInvoice({
-        id: invoiceId,
-        invoiceNumber,
-        pdfBlob,
-        contactName,
-      });
-
-      onSuccess?.(invoiceId);
+      // Set created invoice for success screen (skip in mock mode)
+      if (typeof invoiceId === "string") {
+        setCreatedInvoice({
+          id: invoiceId,
+          invoiceNumber,
+          pdfBlob,
+          contactName,
+        });
+        onSuccess?.(invoiceId);
+      }
     } catch (error) {
       console.error("Error creating invoice:", error);
     } finally {

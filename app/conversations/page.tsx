@@ -533,7 +533,7 @@ export default function ConversationsPage() {
     USE_MOCK_DATA ? "skip" : (selectedConversationId ? { id: selectedConversationId } : "skip")
   );
 
-  const selectedConversation = USE_MOCK_DATA ? mockSelectedConversation : convexSelectedConversation;
+  const selectedConversation = (USE_MOCK_DATA ? mockSelectedConversation : convexSelectedConversation) as Conversation | null | undefined;
 
   // Mutations (use mock in demo mode)
   const sendMessageMutation = useMutation(api.conversations.sendMessageWithMeta);

@@ -63,8 +63,8 @@ export default function WorkshopsPage() {
       workshop.status.toLowerCase().includes(searchQuery.toLowerCase())
   ) ?? [];
 
-  const handleRowClick = (workshopId: Id<"workshops">) => {
-    setSelectedWorkshopId(workshopId);
+  const handleRowClick = (workshopId: Id<"workshops"> | string) => {
+    setSelectedWorkshopId(workshopId as Id<"workshops">);
     setIsDetailModalOpen(true);
   };
 
@@ -264,7 +264,7 @@ export default function WorkshopsPage() {
 
             {/* Table Footer */}
             <div className="border-t px-4 py-3 text-sm text-gray-500">
-              Showing {filteredWorkshops.length} of {workshops.length} workshops
+              Showing {filteredWorkshops.length} of {workshops?.length ?? 0} workshops
             </div>
           </>
         )}

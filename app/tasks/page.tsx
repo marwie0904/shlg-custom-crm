@@ -330,7 +330,7 @@ export default function TasksPage() {
           const result = await toggleComplete({ id: taskId });
 
           // Show toast if opportunity was moved to Did Not Hire
-          if (result.opportunityMoved && result.movedTo) {
+          if ("opportunityMoved" in result && result.opportunityMoved && result.movedTo) {
             toast.success("Completed Final Follow Up", {
               description: `Moved Opportunity to: ${result.movedTo.stage}`,
               duration: 5000,

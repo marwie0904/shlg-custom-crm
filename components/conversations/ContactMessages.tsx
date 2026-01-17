@@ -106,7 +106,7 @@ export function ContactMessages({ contactId, className }: ContactMessagesProps) 
       });
 
       // If this is a Meta conversation, send via API
-      if (result.metaSenderId && (result.source === "messenger" || result.source === "instagram")) {
+      if ("metaSenderId" in result && result.metaSenderId && (result.source === "messenger" || result.source === "instagram")) {
         try {
           await fetch("/api/messages/send", {
             method: "POST",

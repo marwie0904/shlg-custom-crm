@@ -183,7 +183,7 @@ export default function InvoicesPage() {
                   <tr
                     key={invoice._id}
                     onClick={() => {
-                      setSelectedInvoice(invoice);
+                      setSelectedInvoice(invoice as typeof selectedInvoice);
                       setIsInvoiceDetailOpen(true);
                     }}
                     className="hover:bg-gray-50 transition-colors cursor-pointer"

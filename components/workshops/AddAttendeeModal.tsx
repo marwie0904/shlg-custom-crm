@@ -59,17 +59,18 @@ export function AddAttendeeModal({
     }
   }, [open]);
 
-  // Filter out contacts already registered
+  // Filter out contacts already registered (cast to string array for comparison with mock data)
+  const existingIdsAsStrings = existingContactIds.map(id => id.toString());
   const filteredResults = searchResults?.filter(
-    (contact) => !existingContactIds.includes(contact._id)
+    (contact) => !existingIdsAsStrings.includes(contact._id.toString())
   );
 
-  const handleAddAttendee = async (contactId: Id<"contacts">) => {
-    setIsAdding(contactId);
+  const handleAddAttendee = async (contactId: Id<"contacts"> | string) => {
+    setIsAdding(contactId as Id<"contacts">);
     try {
       await registerContact({
         workshopId,
-        contactId,
+        contactId: contactId as Id<"contacts">,
       });
       toast.success("Attendee added successfully");
       onOpenChange(false);

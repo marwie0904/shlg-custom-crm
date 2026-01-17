@@ -384,7 +384,7 @@ export function useMockOpportunityWithRelated(id: string | null) {
     const contact = opportunity.contact || mockContacts.find(c => c._id === opportunity.contactId);
     const tasks = mockTasks.filter(t => t.opportunityId === id).map(t => ({
       ...t,
-      createdAt: t.createdAt || Date.now() - 86400000 * 2,
+      createdAt: t._creationTime || Date.now() - 86400000 * 2,
     }));
     const invoices = mockInvoices.filter(i => i.opportunityId === id);
     const appointments = mockAppointments.filter(a => a.contactId === opportunity.contactId);

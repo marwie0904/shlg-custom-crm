@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Loader2,
@@ -36,7 +36,7 @@ interface ConnectionData {
   pages: ConnectedPage[];
 }
 
-export default function ConnectPage() {
+function ConnectPageContent() {
   const searchParams = useSearchParams();
   const [connectionData, setConnectionData] = useState<ConnectionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -377,5 +377,22 @@ export default function ConnectPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function ConnectPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="h-12 w-12 animate-spin text-blue-600 mx-auto" />
+            <p className="mt-4 text-gray-600">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <ConnectPageContent />
+    </Suspense>
   );
 }

@@ -108,6 +108,9 @@ export default function NewWorkshopPage() {
         // Get upload URL
         const uploadUrl = await generateUploadUrl();
 
+        // Skip in mock mode
+        if (typeof uploadUrl !== "string") continue;
+
         // Upload file to storage
         const result = await fetch(uploadUrl, {
           method: "POST",
@@ -131,7 +134,10 @@ export default function NewWorkshopPage() {
           storageId,
         });
 
-        uploadedFileIds.push(documentId);
+        // Skip in mock mode
+        if (typeof documentId === "string") {
+          uploadedFileIds.push(documentId as Id<"documents">);
+        }
       } catch (err) {
         console.error(`Error uploading file ${file.name}:`, err);
       }
@@ -170,9 +176,9 @@ export default function NewWorkshopPage() {
         type: formData.type || undefined,
       });
 
-      // Upload files if any
-      if (formData.files.length > 0) {
-        await uploadFiles(workshopId);
+      // Upload files if any (skip in mock mode)
+      if (formData.files.length > 0 && typeof workshopId === "string") {
+        await uploadFiles(workshopId as Id<"workshops">);
       }
 
       // Redirect to workshops list

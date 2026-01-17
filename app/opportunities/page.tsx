@@ -42,8 +42,8 @@ export default function OpportunitiesPage() {
 
   const isLoading = opportunities === undefined;
 
-  // Create a map of stage IDs to stage names
-  const stageMap = new Map(stages?.map(s => [s._id, s.name]) || []);
+  // Create a map of stage IDs to stage names (use string keys since stageId is stored as string)
+  const stageMap = new Map(stages?.map(s => [s._id.toString(), s.name]) || []);
 
   // Filter opportunities based on search query
   const filteredOpportunities = opportunities?.filter((opp) => {

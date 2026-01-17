@@ -70,7 +70,7 @@ export function AddTaskModal({
 }: AddTaskModalProps) {
   // Use mock data or real Convex data based on environment
   const mockContacts = useMockContacts({ limit: 100 });
-  const mockOpportunities = useMockOpportunities({ limit: 100 });
+  const mockOpportunities = useMockOpportunities({});
 
   // Only fetch contacts and opportunities if we need to show the dropdowns (skip in mock mode)
   const convexContacts = useQuery(
