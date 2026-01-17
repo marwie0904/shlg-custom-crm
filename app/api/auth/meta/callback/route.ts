@@ -134,7 +134,11 @@ export async function GET(request: NextRequest) {
 
     const pages: FacebookPage[] = pagesData.data || [];
 
+    console.log("[Meta OAuth] Pages response:", JSON.stringify(pagesData, null, 2));
+    console.log("[Meta OAuth] Found pages:", pages.length);
+
     if (pages.length === 0) {
+      console.error("[Meta OAuth] No pages found. User may not have admin access to any Facebook Pages or pages_show_list permission was not granted.");
       return NextResponse.redirect(`${errorUrl}no_pages_found`);
     }
 
